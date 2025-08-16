@@ -1,0 +1,1686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>GTNH Recipe Planner (RecEx ZIP)</title>
+<style>
+  :root {
+    --bg: #0e1116;
+    --panel: #161b22;
+    --text: #e6edf3;
+    --muted: #9aa6b2;
+    --border: #30363d;
+    --accent: #2ea043;
+    --accent-contrast: #052010;
+    --blue: #58a6ff;
+    --warn: #f0883e;
+    --danger: #f85149;
+    --yellow: #d29922;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial; }
+  header.appbar { position: sticky; top: 0; background: #0d1117; border-bottom: 1px solid var(--border);
+    padding: 8px; display: flex; gap: 8px; align-items: center; z-index: 5; flex-wrap: wrap; }
+  header.appbar h1 { margin: 0 8px 0 0; font-size: 16px; font-weight: 600; }
+  .spacer { flex: 1; }
+  button, input, select, textarea { background: #0d1117; color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 10px; }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
+  button.ghost { background: transparent; border-color: var(--border); }
+  button.icon { padding: 4px 6px; }
+  input[type="number"] { width: 7ch; }
+  input[type="search"] { width: 100%; }
+  .pill { display: inline-flex; gap: 6px; align-items: center; padding: 2px 8px; background: #0d1117; border: 1px solid var(--border); border-radius: 999px; }
+  .muted { color: var(--muted); }
+  .warn { color: var(--warn); }
+  .accent { color: var(--accent); }
+  .mono { font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+
+  #app { display: grid; gap: 8px; padding: 8px; grid-template-columns: 320px 1fr 400px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; min-height: 120px; overflow: hidden; }
+  .panel .head { padding: 8px 12px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+  .panel .body { padding: 8px 12px; overflow: auto; flex: 1; }
+
+  .list { list-style: none; margin: 0; padding: 0; }
+  .list li { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid #21262d; }
+  .list li:hover { background: #0d1117; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row.space { justify-content: space-between; }
+  .tag { display: inline-block; padding: 0 6px; border: 1px solid var(--border); border-radius: 6px; background: #0d1117; }
+  .tag.warn { border-color: #3c2c16; color: var(--warn); }
+
+  .tree ul { list-style: none; margin: 0; padding-left: 14px; border-left: 1px dashed var(--border); }
+  .tree li { margin: 6px 0; }
+  .node { display: grid; grid-template-columns: auto auto 1fr auto; gap: 8px; align-items: center; }
+  .toggle { width: 1.1rem; text-align: center; cursor: pointer; user-select: none; }
+  .fav { cursor: pointer; }
+
+  .help { padding: 8px 12px; border-top: 1px dashed var(--border); }
+  .sep { height: 1px; background: #21262d; margin: 8px 0; }
+
+  #progressBar { width: 260px; height: 10px; background: #1b2230; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  #progressBar .fill { height: 100%; width: 0%; background: var(--blue); transition: width .12s linear; }
+  .choose-btn { border-color: #3c2c16; color: var(--warn); }
+
+  .tabs { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .tabs button { border: 0; padding: 6px 10px; background: #0d1117; }
+  .tabs button.active { background: #0f1420; color: var(--text); border-right: 1px solid var(--border); }
+  .tabs button + button { border-left: 1px solid var(--border); }
+
+  #todoArea .level-title { font-weight: 600; margin-top: 8px; padding-top: 8px; border-top: 1px solid #21262d; }
+  #todoArea .step { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 8px 10px; border-bottom: 1px dashed #21262d; border-radius: 8px; }
+  #todoArea .step.checked-storage { background: #0f1f16; box-shadow: inset 0 0 0 2px rgba(46,160,67,.35); }
+  #todoArea .step.craftable-now { background: #132616; box-shadow: inset 0 0 0 2px rgba(46,160,67,.55); }
+  #todoArea .step.partially-craftable { background: #251f10; box-shadow: inset 0 0 0 2px rgba(240,136,62,.55); }
+  #todoArea .step.ingredient-focus { outline: 2px solid var(--yellow); outline-offset: -2px; background-image: linear-gradient(0deg, rgba(210,153,34,.12), rgba(210,153,34,.12)); }
+  #todoArea .meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; cursor: pointer; }
+  #todoArea .right { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  #todoArea label.small { color: var(--muted); font-size: 12px; display: inline-flex; gap: 6px; align-items: center; }
+  #todoArea input.owned { width: 8ch; }
+
+  #gatherSummary li.gather-done { background: #132616; box-shadow: inset 0 0 0 2px rgba(46,160,67,.55); border-radius: 8px; }
+
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: none; align-items: center; justify-content: center; z-index: 9998; }
+  .modal { background: #0d1117; border: 1px solid var(--border); border-radius: 10px; max-width: 680px; width: min(96vw, 680px); max-height: 80vh; display: flex; flex-direction: column; }
+  .modal .mod-head { padding: 10px 12px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+  .modal .mod-body { padding: 10px 12px; overflow: auto; display: flex; flex-direction: column; gap: 8px; }
+  .modal .mod-foot { padding: 10px 12px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; }
+</style>
+</head>
+<body>
+
+<header class="appbar">
+  <h1>GTNH Recipe Planner</h1>
+  <input type="file" id="fileInput" accept=".zip,application/zip,application/x-zip-compressed,application/json,.json,.json.gz" />
+  <button id="btnLoadDemo" class="ghost">Load demo</button>
+  <div class="row" title="In GregTech machines, the Programmed Circuit is usually not consumed.">
+    <label class="row">
+      <input type="checkbox" id="chkConsumeCircuits" />
+      <span>Consume GT Programmed Circuits</span>
+    </label>
+  </div>
+  <div class="spacer"></div>
+  <button id="btnToggleCatalog" class="ghost">Hide Catalog</button>
+  <button id="btnTogglePlan" class="ghost">Hide Plan</button>
+  <div id="progressWrap" class="row" style="display:none">
+    <div id="progressText" class="muted">Importing…</div>
+    <div id="progressBar"><div class="fill"></div></div>
+  </div>
+</header>
+
+<div id="app">
+  <section class="panel" id="catalogPanel">
+    <div class="head">
+      <strong>Catalog</strong>
+      <div class="spacer"></div>
+      <div class="tabs">
+        <button id="tabCatalog" class="active">Catalog</button>
+        <button id="tabFavorites">Favorites</button>
+      </div>
+    </div>
+    <div class="body">
+      <div id="catalogView">
+        <div class="row" style="margin-bottom:6px;">
+          <input id="searchBox" type="search" placeholder="Search items (name, id, or meta id)" />
+        </div>
+        <ul id="catalogList" class="list" aria-live="polite"></ul>
+      </div>
+      <div id="favoritesView" style="display:none;">
+        <div class="row" style="margin-bottom:6px;">
+          <button id="btnExportFavorites" class="ghost">Export favorites</button>
+          <input type="file" id="favImport" accept="application/json" style="display:none" />
+          <button id="btnImportFavorites" class="ghost">Import favorites</button>
+          <button id="btnClearFavorites" class="ghost">Clear favorites</button>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:6px;">
+          <input id="favSearchOutput" type="search" placeholder="Search favorited items (output name)…" />
+          <input id="favSearchIngredient" type="search" placeholder="Search by ingredient used in recipe…" />
+        </div>
+        <ul id="favoritesList" class="list" aria-live="polite"></ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="inspectorPanel">
+    <div class="head">
+      <strong>Inspector</strong>
+      <span id="inspectorTitle" class="muted"></span>
+      <div class="spacer"></div>
+      <button id="btnClearSelection" class="ghost">Clear</button>
+    </div>
+    <div class="body" id="inspectorBody">
+      <div class="sep"></div>
+      <div id="recipeArea"></div>
+      <div class="sep"></div>
+      <div id="todoArea"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="planPanel">
+    <div class="head">
+      <strong>Plan</strong>
+      <div class="spacer"></div>
+      <button id="btnExportState" class="ghost">Export state</button>
+      <input type="file" id="stateImport" accept="application/json" style="display:none" />
+      <button id="btnImportState" class="ghost">Import state</button>
+      <button id="btnClearPlan" class="ghost">Clear plan</button>
+    </div>
+    <div class="body">
+      <div id="targetsArea"></div>
+      <div class="sep"></div>
+      <div id="gatherSummary"></div>
+      <div class="sep"></div>
+      <div class="tree" id="treeArea"></div>
+    </div>
+    <div class="help">
+      <div><strong>Notes</strong></div>
+      <ul>
+        <li>Favorites persist and can be exported/imported.</li>
+        <li>Owned amounts reset on refresh and when you Clear plan.</li>
+        <li>Programmed Circuits are hidden from “Remaining to gather.”</li>
+        <li>To‑do is leveled (base=1 → final=max; grouped by machine, then name).</li>
+      </ul>
+    </div>
+  </section>
+</div>
+
+<div id="modalBackdrop" class="modal-backdrop" aria-hidden="true">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modTitle">
+    <div class="mod-head">
+      <strong id="modTitle">Choose</strong>
+      <div class="spacer"></div>
+      <button id="modClose" class="icon" title="Close">✕</button>
+    </div>
+    <div class="mod-body" id="modBody"></div>
+    <div class="mod-foot" id="modFoot"></div>
+  </div>
+</div>
+
+<script type="module">
+/* ===========================================================
+   GTNH Recipe Planner — RecEx import + Regex export (real meta IDs)
+   Compact Regex; per-step Copy; exclude Checked Storage; escape () in names
+   Inspector details; combine duplicate inputs; tag chooser modal
+   Multiplicative resource/output display based on planned crafts
+   =========================================================== */
+
+const supportsDecompressionStream = typeof DecompressionStream !== "undefined";
+
+// Progress
+const progressWrap = document.getElementById("progressWrap");
+const progressText = document.getElementById("progressText");
+const progressFill = document.querySelector("#progressBar .fill");
+function showProgress(label, frac) { progressWrap.style.display = "flex"; progressText.textContent = label; if (Number.isFinite(frac)) progressFill.style.width = (frac * 100).toFixed(0) + "%"; }
+function hideProgress() { progressWrap.style.display = "none"; progressFill.style.width = "0%"; }
+
+// Utilities
+const uid = (() => { let i = 0; return () => (++i).toString(36) + "-" + Date.now().toString(36); })();
+const keyOf = (id, meta = 0) => meta ? `${id}@${meta}` : id;
+const ceilDiv = (a, b) => Math.ceil(a / b);
+const fmtQty = (n) => (Number.isFinite(n) ? (Math.abs(n) >= 10000 ? n.toLocaleString() : n.toString()) : "0");
+function hashCode(str) { let h = 0; for (let i = 0; i < str.length; i++) { h = Math.imul(31, h) + str.charCodeAt(i) | 0; } return h; }
+function stableHashHex(str){ const h = hashCode(str) >>> 0; return ("00000000" + h.toString(16)).slice(-8); }
+
+// LocalStorage
+const LS = { get(k, f){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : f; }catch{ return f; }}, set(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch{} } };
+const LS_KEYS = {
+  favorites: "gtnh_favorites",
+  tagPrefs: "gtnh_tag_prefs",
+  recipeTagPrefs: "gtnh_tag_prefs_by_recipe",
+  plan: "gtnh_plan_targets",
+  circuitsConsumed: "gtnh_circuits_consumed",
+  baseOverrides: "gtnh_base_overrides",
+  leftTab: "gtnh_left_tab",
+  collapsedCatalog: "gtnh_collapsed_catalog",
+  collapsedPlan: "gtnh_collapsed_plan",
+};
+
+// Store
+class Store {
+  constructor() {
+    this.items = new Map();     // key -> { id, meta, name, metaId? }
+    this.tags = new Map();
+    this.recipes = new Map();
+    this.byOutput = new Map();
+  }
+  clear() { this.items.clear(); this.tags.clear(); this.recipes.clear(); this.byOutput.clear(); }
+  importNormalized(doc) {
+    this.clear();
+    if (Array.isArray(doc.items)) for (const it of doc.items) {
+      const key = keyOf(it.id, it.meta ?? 0);
+      const name = it.displayName || it.id + ((it.meta ?? 0) ? ` [${it.meta}]` : "");
+      this.items.set(key, { id: it.id, meta: it.meta || 0, name, metaId: (typeof it.metaId === "number" ? it.metaId : undefined) });
+    }
+    if (doc.tags && typeof doc.tags==="object")
+      for (const [tag, arr] of Object.entries(doc.tags))
+        this.tags.set(tag, (arr||[]).map(s=> typeof s==="string"? s : keyOf(s.id, s.meta||0)));
+    if (Array.isArray(doc.recipes))
+      for (const r of doc.recipes) {
+        this.recipes.set(r.id, r);
+        for (const o of r.outputs) {
+          const outKey = o.key || keyOf(o.item, o.meta||0);
+          if (!this.byOutput.has(outKey)) this.byOutput.set(outKey, []);
+          this.byOutput.get(outKey).push(r.id);
+        }
+      }
+  }
+  getItemName(key) {
+    if (this.items.has(key)) return this.items.get(key).name;
+    if (key.startsWith("fluid:")) return key.slice(6).replace(/_/g," ")+" (mB)";
+    if (key.startsWith("tag:")) return `Tag: ${key.slice(4)}`;
+    return key;
+  }
+  getMetaId(key) {
+    const it = this.items.get(key);
+    if (!it) return undefined;
+    if (typeof it.metaId === "number") return it.metaId;
+    if (typeof it.meta === "number" && it.meta > 0) return it.meta;
+    return 0;
+  }
+  outputsFor(key) { return this.byOutput.get(key) || []; }
+  getRecipe(id) { return this.recipes.get(id); }
+}
+const store = new Store();
+
+// State
+const favorites = new Map(Object.entries(LS.get(LS_KEYS.favorites, {})));
+const legacyTagPrefs = new Map(Object.entries(LS.get(LS_KEYS.tagPrefs, {})));
+const recipeTagPrefs = new Map(Object.entries(LS.get(LS_KEYS.recipeTagPrefs, {})).map(([fk, obj]) => [fk, new Map(Object.entries(obj))]));
+let planTargets = LS.get(LS_KEYS.plan, []);
+let circuitsConsumed = !!LS.get(LS_KEYS.circuitsConsumed, false);
+const baseOverrides = new Set(LS.get(LS_KEYS.baseOverrides, []));
+let leftTab = LS.get(LS_KEYS.leftTab, "catalog");
+let collapsedCatalog = !!LS.get(LS_KEYS.collapsedCatalog, false);
+let collapsedPlan = !!LS.get(LS_KEYS.collapsedPlan, false);
+
+// Session
+let obtained = new Map();
+let checkedStorage = new Set();
+let gatherMarked = new Set();
+let ingredientFocusKey = null;
+
+// DOM refs
+const fileInput = document.getElementById("fileInput");
+const btnLoadDemo = document.getElementById("btnLoadDemo");
+const chkConsumeCircuits = document.getElementById("chkConsumeCircuits");
+chkConsumeCircuits.checked = circuitsConsumed;
+
+const btnToggleCatalog = document.getElementById("btnToggleCatalog");
+const btnTogglePlan = document.getElementById("btnTogglePlan");
+
+const catalogPanel = document.getElementById("catalogPanel");
+const planPanel = document.getElementById("planPanel");
+
+const tabCatalog = document.getElementById("tabCatalog");
+const tabFavorites = document.getElementById("tabFavorites");
+const catalogView = document.getElementById("catalogView");
+const favoritesView = document.getElementById("favoritesView");
+
+const searchBox = document.getElementById("searchBox");
+const catalogList = document.getElementById("catalogList");
+const favoritesList = document.getElementById("favoritesList");
+const btnExportFavorites = document.getElementById("btnExportFavorites");
+const btnImportFavorites = document.getElementById("btnImportFavorites");
+const favImport = document.getElementById("favImport");
+const btnClearFavorites = document.getElementById("btnClearFavorites");
+
+const favSearchOutput = document.getElementById("favSearchOutput");
+const favSearchIngredient = document.getElementById("favSearchIngredient");
+
+const inspectorTitle = document.getElementById("inspectorTitle");
+const recipeArea = document.getElementById("recipeArea");
+const todoArea = document.getElementById("todoArea");
+const btnClearSelection = document.getElementById("btnClearSelection");
+
+const targetsArea = document.getElementById("targetsArea");
+const gatherSummary = document.getElementById("gatherSummary");
+const treeArea = document.getElementById("treeArea");
+const btnClearPlan = document.getElementById("btnClearPlan");
+
+// Layout
+function computeGridColumns() {
+  const w = window.innerWidth || document.documentElement.clientWidth;
+  if (w <= 980) return "1fr";
+  const leftW = (w <= 1200) ? 280 : 320;
+  const rightW = (w <= 1200) ? 360 : 400;
+  if (!collapsedCatalog && !collapsedPlan) return `${leftW}px 1fr ${rightW}px`;
+  if (collapsedCatalog && !collapsedPlan) return `1fr ${rightW}px`;
+  if (!collapsedCatalog && collapsedPlan) return `${leftW}px 1fr`;
+  return "1fr";
+}
+function updateCollapseUI() {
+  catalogPanel.style.display = collapsedCatalog ? "none" : "";
+  planPanel.style.display = collapsedPlan ? "none" : "";
+  btnToggleCatalog.textContent = collapsedCatalog ? "Show Catalog" : "Hide Catalog";
+  btnTogglePlan.textContent = collapsedPlan ? "Show Plan" : "Hide Plan";
+  document.getElementById("app").style.gridTemplateColumns = computeGridColumns();
+  LS.set(LS_KEYS.collapsedCatalog, collapsedCatalog);
+  LS.set(LS_KEYS.collapsedPlan, collapsedPlan);
+}
+window.addEventListener("resize", () => { document.getElementById("app").style.gridTemplateColumns = computeGridColumns(); });
+btnToggleCatalog.addEventListener("click", () => { collapsedCatalog = !collapsedCatalog; updateCollapseUI(); });
+btnTogglePlan.addEventListener("click", () => { collapsedPlan = !collapsedPlan; updateCollapseUI(); });
+
+// App events
+btnLoadDemo.addEventListener("click", () => { store.importNormalized(DEMO_DATA); toast(`Loaded demo: ${store.items.size} items, ${store.recipes.size} recipes`); renderAll(); });
+chkConsumeCircuits.addEventListener("change", () => { circuitsConsumed = chkConsumeCircuits.checked; LS.set(LS_KEYS.circuitsConsumed, circuitsConsumed); renderAll(); });
+
+function setLeftTab(tab) {
+  leftTab = tab; LS.set(LS_KEYS.leftTab, leftTab);
+  tabCatalog.classList.toggle("active", tab === "catalog");
+  tabFavorites.classList.toggle("active", tab === "favorites");
+  catalogView.style.display = tab === "catalog" ? "" : "none";
+  favoritesView.style.display = tab === "favorites" ? "" : "none";
+  renderLeftPane();
+}
+tabCatalog.addEventListener("click", () => setLeftTab("catalog"));
+tabFavorites.addEventListener("click", () => setLeftTab("favorites"));
+
+btnExportFavorites.addEventListener("click", () => {
+  const data = JSON.stringify(Object.fromEntries(favorites), null, 2);
+  downloadBlob(new Blob([data], { type: "application/json" }), "gtnh_favorites.json");
+});
+btnImportFavorites.addEventListener("click", () => favImport.click());
+favImport.addEventListener("change", async (e) => {
+  const f = e.target.files?.[0]; if (!f) return;
+  try {
+    const text = await f.text(); const obj = JSON.parse(text);
+    if (typeof obj !== "object" || Array.isArray(obj)) throw new Error("Invalid favorites file");
+    favorites.clear(); for (const [k, v] of Object.entries(obj)) favorites.set(k, v);
+    persistAll(); renderAll(); setLeftTab("favorites"); toast("Favorites imported");
+  } catch (err) { alert("Import failed: " + err.message); }
+});
+btnClearFavorites.addEventListener("click", () => {
+  if (!favorites.size) return;
+  if (!confirm("Clear all saved recipe selections?")) return;
+  favorites.clear(); persistAll(); renderAll(); setLeftTab("favorites");
+});
+
+btnClearSelection.addEventListener("click", () => { planner.selectedKey = null; renderInspector(); });
+btnClearPlan.addEventListener("click", () => {
+  if (!planTargets.length && obtained.size === 0 && checkedStorage.size === 0 && gatherMarked.size === 0) return;
+  if (!confirm("Clear the entire plan and in-session Owned amounts, Checked Storage flags, and Remaining-to-gather marks?")) return;
+  planTargets = []; obtained.clear(); checkedStorage.clear(); gatherMarked.clear(); ingredientFocusKey = null;
+  persistAll(); renderAll();
+});
+
+searchBox.addEventListener("input", () => renderCatalog());
+document.getElementById("favSearchOutput")?.addEventListener("input", renderFavoritesTab);
+document.getElementById("favSearchIngredient")?.addEventListener("input", renderFavoritesTab);
+
+fileInput.addEventListener("change", async (e) => {
+  const file = e.target.files?.[0]; if (!file) return;
+  try { await importRecExFile(file); }
+  catch (err) { alert("Import failed: " + err.message); console.error(err); }
+  finally { hideProgress(); }
+});
+
+// Persistence
+function persistAll() {
+  LS.set(LS_KEYS.favorites, Object.fromEntries(favorites));
+  LS.set(LS_KEYS.tagPrefs, Object.fromEntries(legacyTagPrefs));
+  const rtpo = {}; for (const [fk, map] of recipeTagPrefs.entries()) rtpo[fk] = Object.fromEntries(map);
+  LS.set(LS_KEYS.recipeTagPrefs, rtpo);
+  LS.set(LS_KEYS.plan, planTargets);
+  LS.set(LS_KEYS.circuitsConsumed, circuitsConsumed);
+  LS.set(LS_KEYS.baseOverrides, Array.from(baseOverrides));
+  LS.set(LS_KEYS.leftTab, leftTab);
+  LS.set(LS_KEYS.collapsedCatalog, collapsedCatalog);
+  LS.set(LS_KEYS.collapsedPlan, collapsedPlan);
+}
+
+// Tag prefs
+const favKeyFor = (outKey, recipeId) => `${outKey}||${recipeId}`;
+function getRecipeTagChoice(outKey, recipeId, tagName) {
+  const fk = favKeyFor(outKey, recipeId);
+  const map = recipeTagPrefs.get(fk);
+  if (map && map.has(tagName)) return map.get(tagName);
+  if (legacyTagPrefs.has(tagName)) return legacyTagPrefs.get(tagName);
+  const list = store.tags.get(tagName) || [];
+  return list[0] || null;
+}
+function setRecipeTagChoice(outKey, recipeId, tagName, itemKey) {
+  const fk = favKeyFor(outKey, recipeId);
+  if (!recipeTagPrefs.has(fk)) recipeTagPrefs.set(fk, new Map());
+  const map = recipeTagPrefs.get(fk);
+  if (itemKey) map.set(tagName, itemKey); else map.delete(tagName);
+  if (map.size === 0) recipeTagPrefs.delete(fk);
+  persistAll();
+}
+
+// Planner
+class Planner {
+  constructor(store) { this.store = store; this.selectedKey = null; this.openNodes = new Set(); }
+  pickRecipeIdForOutput(outKey) { const fav = favorites.get(outKey); const ids = this.store.outputsFor(outKey); return (fav && ids.includes(fav)) ? fav : null; }
+  resolveTag(tagName, outKeyCtx, recipeIdCtx) { return getRecipeTagChoice(outKeyCtx, recipeIdCtx, tagName) || null; }
+
+  build() {
+    const nodes = new Map(); const edges = [];
+    const demand = (key, qty, parent = null, via = null, pathSet = new Set()) => {
+      if (!nodes.has(key)) nodes.set(key, this.createNode(key));
+      const node = nodes.get(key);
+      node.requested += qty;
+      if (parent && via) edges.push({ parentKey: parent, childKey: key, via, requiredQty: qty });
+
+      if (pathSet.has(key)) return;
+      const nextPath = new Set(pathSet); nextPath.add(key);
+
+      const availableIds = this.store.outputsFor(key);
+      const recipeId = this.pickRecipeIdForOutput(key);
+      node.hasOptions = availableIds.length > 0;
+      node.isBaseOverride = baseOverrides.has(key);
+      node.needsChoice = node.hasOptions && !recipeId && !node.isBaseOverride;
+      node.recipeId = node.isBaseOverride ? null : recipeId;
+
+      const have = obtainedNumber(key);
+      let outPerCraft = 1;
+      if (node.recipeId) {
+        const rec = store.getRecipe(node.recipeId);
+        const out = rec.outputs.find(o => (o.key || keyOf(o.item, o.meta || 0)) === key) || rec.outputs[0];
+        outPerCraft = Math.max(out?.count || 1, 1);
+      }
+      node.outPerCraft = outPerCraft;
+
+      const craftsNeededNow = node.recipeId ? Math.max(0, ceilDiv(Math.max(node.requested - have, 0), outPerCraft)) : 0;
+      const alreadyPropagated = node.propagatedCrafts || 0;
+      node.craftsNeeded = craftsNeededNow;
+
+      if (node.recipeId) {
+        const deltaCrafts = Math.max(0, craftsNeededNow - alreadyPropagated);
+        if (deltaCrafts > 0) {
+          const rec = store.getRecipe(node.recipeId);
+          node.machine = rec.machine; node.euPerTick = rec.euPerTick; node.duration = rec.duration;
+
+          for (const ing of rec.inputs) {
+            const mult = deltaCrafts * (igCount(ing));
+            if (ing.tag) {
+              const resolved = this.resolveTag(ing.tag, key, node.recipeId);
+              if (!resolved) {
+                const tagKey = `tag:${ing.tag}`;
+                if (!nodes.has(tagKey)) nodes.set(tagKey, this.createNode(tagKey, { nameOverride: `Tag: ${ing.tag}` }));
+                demand(tagKey, mult, key, ing, nextPath);
+              } else {
+                demand(resolved, mult, key, ing, nextPath);
+              }
+            } else if (ing.item) {
+              const childKey = ing.key || keyOf(ing.item, ing.meta || 0);
+              demand(childKey, mult, key, ing, nextPath);
+            }
+          }
+          node.propagatedCrafts = alreadyPropagated + deltaCrafts;
+        }
+      }
+    };
+
+    for (const t of planTargets) demand(t.key, t.qty, null, null, new Set());
+
+    for (const node of nodes.values()) {
+      node.have = obtainedNumber(node.key);
+      node.remaining = Math.max(node.requested - node.have, 0);
+      node.isBase = (!store.outputsFor(node.key).length && !node.key.startsWith("tag:")) || node.isBaseOverride;
+    }
+
+    const toGather = [];
+    for (const node of nodes.values()) {
+      const isLeaf = node.key.startsWith("tag:") || node.needsChoice || !node.recipeId;
+      if (isLeaf && node.remaining > 0) {
+        const name = this.nameOf(node.key);
+        if (/programmed\s*circuit/i.test(name)) continue;
+        let reason = "base";
+        if (node.key.startsWith("tag:")) reason = "unresolved-tag";
+        else if (node.needsChoice) reason = "needs-choice";
+        else if (!node.hasOptions) reason = "base";
+        toGather.push({ key: node.key, qty: node.remaining, name, reason, isBaseOverride: node.isBaseOverride });
+      }
+    }
+    toGather.sort((a, b) => a.name.localeCompare(b.name));
+    return { nodes, edges, toGather };
+  }
+
+  createNode(key, opts = {}) {
+    return {
+      key, name: opts.nameOverride || this.nameOf(key),
+      requested: 0, have: 0, remaining: 0,
+      recipeId: null, outPerCraft: 1, craftsNeeded: 0, propagatedCrafts: 0,
+      isBase: false, machine: null, euPerTick: null, duration: null,
+      hasOptions: false, needsChoice: false, isBaseOverride: false
+    };
+  }
+  nameOf(key) { if (key.startsWith("tag:")) return `Tag: ${key.slice(4)}`; return store.getItemName(key); }
+}
+const planner = new Planner(store);
+
+function igCount(ing){ return Math.max(1, ing.count ?? 1); }
+
+function craftsPossibleFor(outKey, recipeId) {
+  const r = store.getRecipe(recipeId);
+  if (!r) return 0;
+  if (!r.inputs || r.inputs.length === 0) return Infinity;
+  let possible = Infinity;
+  for (const ing of r.inputs) {
+    const needPer = igCount(ing);
+    if (ing.tag) {
+      const choice = getRecipeTagChoice(outKey, recipeId, ing.tag);
+      if (!choice) return 0;
+      const have = obtainedNumber(choice);
+      possible = Math.min(possible, Math.floor(have / needPer));
+    } else {
+      const k = ing.key || keyOf(ing.item, ing.meta || 0);
+      const have = obtainedNumber(k);
+      possible = Math.min(possible, Math.floor(have / needPer));
+    }
+  }
+  return Number.isFinite(possible) ? possible : 0;
+}
+
+function recipeUsesKey(r, outKeyCtx, targetKey) {
+  if (!r || !targetKey) return false;
+  for (const ing of r.inputs || []) {
+    if (ing.tag) {
+      const tagKey = `tag:${ing.tag}`;
+      const resolved = getRecipeTagChoice(outKeyCtx, r.id, ing.tag);
+      if (targetKey === tagKey) return true;
+      if (resolved && resolved === targetKey) return true;
+    } else {
+      const k = ing.key || keyOf(ing.item, ing.meta || 0);
+      if (k === targetKey) return true;
+    }
+  }
+  return false;
+}
+function setIngredientFocus(key) { ingredientFocusKey = (ingredientFocusKey === key ? null : key); renderTodo(); }
+
+// Rendering
+function renderAll() { setLeftTab(leftTab); updateCollapseUI(); renderInspector(); renderPlan(); }
+function renderLeftPane() { leftTab === "catalog" ? renderCatalog() : renderFavoritesTab(); }
+
+// Catalog and Favorites list functions are unchanged from prior paste
+
+function renderCatalog() {
+  const q = (searchBox.value || "").trim().toLowerCase();
+  const keys = Array.from(store.byOutput.keys());
+  const results = keys.filter(k => {
+    const name = store.getItemName(k).toLowerCase();
+    const metaId = String(store.getMetaId(k) ?? "");
+    return !q || name.includes(q) || k.toLowerCase().includes(q) || metaId.includes(q);
+  }).sort((a, b) => store.getItemName(a).localeCompare(store.getItemName(b)));
+  catalogList.innerHTML = "";
+  for (const key of results.slice(0, 1000)) catalogList.appendChild(catalogItemRow(key));
+  if (!results.length) catalogList.innerHTML = `<li><span class="muted">No items match your search.</span></li>`;
+}
+function catalogItemRow(key) {
+  const li = document.createElement("li");
+  const left = document.createElement("div"); left.className = "row"; left.appendChild(itemPill(store.getItemName(key), key)); li.appendChild(left);
+  const right = document.createElement("div"); const favId = favorites.get(key);
+  const favBtn = document.createElement("button"); favBtn.className = "icon"; favBtn.title = favId ? "Recipe selected" : "Select recipe"; favBtn.innerHTML = favId ? "★" : "☆";
+  favBtn.addEventListener("click", (e) => { e.stopPropagation(); pickFavoriteViaDialog(key); });
+  right.appendChild(favBtn); li.appendChild(right);
+  li.addEventListener("click", () => focusInspectorOnKey(key));
+  return li;
+}
+function recipeUsesIngredientText(outKey, recId, needleLower) {
+  const r = store.getRecipe(recId); if (!r) return false;
+  const names = [];
+  for (const ing of r.inputs || []) {
+    if (ing.tag) { const chosen = getRecipeTagChoice(outKey, recId, ing.tag); names.push(chosen ? store.getItemName(chosen) : `Tag: ${ing.tag}`); }
+    else { const k = ing.key || keyOf(ing.item, ing.meta || 0); names.push(store.getItemName(k)); }
+  }
+  if (Array.isArray(r.circuits) && r.circuits.length) for (const n of r.circuits) names.push(`Programmed Circuit #${n}`);
+  return names.some(n => n.toLowerCase().includes(needleLower));
+}
+function renderFavoritesTab() {
+  favoritesList.innerHTML = "";
+  const entries = Array.from(favorites.entries()).filter(([outKey, id]) => store.outputsFor(outKey).includes(id));
+  const qOut = (favSearchOutput?.value || "").trim().toLowerCase();
+  const qIng = (favSearchIngredient?.value || "").trim().toLowerCase();
+  const filtered = entries.filter(([outKey, recId]) => {
+    const outName = store.getItemName(outKey).toLowerCase();
+    if (qOut && !outName.includes(qOut) && !outKey.toLowerCase().includes(qOut)) return false;
+    if (qIng && !recipeUsesIngredientText(outKey, recId, qIng)) return false;
+    return true;
+  }).sort((a, b) => store.getItemName(a[0]).localeCompare(store.getItemName(b[0])));
+  if (!filtered.length) { favoritesList.innerHTML = `<li><span class="muted">No favorites match your search.</span></li>`; return; }
+  for (const [outKey, recId] of filtered) {
+    const li = document.createElement("li");
+    const left = document.createElement("div"); left.className = "row";
+    left.appendChild(itemPill(store.getItemName(outKey), outKey));
+    const r = store.getRecipe(recId); if (r) left.appendChild(span(`<span class="tag">${prettyMachine(r)}</span>`, ""));
+    const right = document.createElement("div"); right.className = "row";
+    const go = document.createElement("button"); go.className = "icon"; go.textContent = "Go"; go.addEventListener("click", () => focusInspectorOnKey(outKey));
+    const clr = document.createElement("button"); clr.className = "icon"; clr.textContent = "✕"; clr.title = "Clear favorite";
+    clr.addEventListener("click", () => { favorites.delete(outKey); persistAll(); renderAll(); setLeftTab("favorites"); });
+    right.append(go, clr); li.append(left, right); favoritesList.appendChild(li);
+  }
+}
+
+// Inspector with combined inputs and multiplicative display
+function renderInspector() {
+  const key = planner.selectedKey;
+  inspectorTitle.textContent = key ? "— " + store.getItemName(key) : "";
+  recipeArea.innerHTML = "";
+  if (!key) { renderTodo(); return; }
+
+  const recipeIds = store.outputsFor(key);
+  const baseMarked = baseOverrides.has(key);
+
+  const header = document.createElement("div"); header.className = "row"; header.style.flexWrap = "wrap"; header.style.gap = "8px";
+  const typeSelect = document.createElement("select"); typeSelect.style.minWidth = "200px";
+  const recipeSelect = document.createElement("select"); recipeSelect.style.minWidth = "420px";
+  const search = document.createElement("input"); search.type = "search"; search.placeholder = "Search recipes (inputs/machine)…"; search.style.minWidth = "260px";
+
+  const currentFav = favorites.get(key) || "";
+  const groups = groupRecipesByType(recipeIds);
+
+  function refreshTypeOptions() {
+    typeSelect.innerHTML = "";
+    const opt0 = document.createElement("option"); opt0.value = ""; opt0.textContent = "— Choose type —"; typeSelect.appendChild(opt0);
+    for (const g of Object.keys(groups).sort()) { const opt = document.createElement("option"); opt.value = g; opt.textContent = g; typeSelect.appendChild(opt); }
+    if (currentFav) { const r = store.getRecipe(currentFav); const g = r ? groupLabelForRecipe(r) : ""; if (g && [...typeSelect.options].some(o=>o.value===g)) typeSelect.value = g; }
+  }
+  function recipeLabelFor(id) {
+    const r = store.getRecipe(id);
+    const out = r.outputs.find(o => (o.key || keyOf(o.item, o.meta || 0)) === key) || r.outputs[0];
+    return `${prettyMachine(r)} • yields ${out.count} • ${summInputs(r)}`;
+  }
+  function refreshRecipeOptions() {
+    recipeSelect.innerHTML = "";
+    const opt0 = document.createElement("option"); opt0.value = ""; opt0.textContent = "— Select a recipe —"; recipeSelect.appendChild(opt0);
+    const g = typeSelect.value; if (!g) return;
+    const ids = (groups[g] || []); const q = (search.value || "").toLowerCase();
+    for (const id of ids) { const label = recipeLabelFor(id); if (q && !label.toLowerCase().includes(q)) continue; const opt = document.createElement("option"); opt.value = id; opt.textContent = label; recipeSelect.appendChild(opt); }
+    if (currentFav && ids.includes(currentFav)) recipeSelect.value = currentFav;
+  }
+
+  refreshTypeOptions(); refreshRecipeOptions();
+  typeSelect.addEventListener("change", () => { refreshRecipeOptions(); renderRecipeDetails(); });
+  search.addEventListener("input", () => { refreshRecipeOptions(); renderRecipeDetails(); });
+  recipeSelect.addEventListener("change", () => { renderRecipeDetails(); });
+
+  const favBtn = document.createElement("button"); favBtn.className = "icon"; favBtn.innerHTML = "★"; favBtn.title = "Save selected recipe";
+  favBtn.addEventListener("click", () => {
+    const val = recipeSelect.value; if (!val) { alert("Pick a recipe first."); return; }
+    favorites.set(key, val); persistAll(); renderPlan(); renderLeftPane(); toast("Recipe saved");
+  });
+
+  const qty = document.createElement("input"); qty.type = "number"; qty.min = "1"; qty.step = "1"; qty.value = "1"; qty.title = "Target quantity";
+  const addBtn = document.createElement("button"); addBtn.className = "primary"; addBtn.textContent = "Add to plan";
+  addBtn.addEventListener("click", () => {
+    const qn = Math.max(1, Math.floor(Number(qty.value) || 1));
+    const found = planTargets.find(t => t.key === key);
+    if (found) found.qty += qn; else planTargets.push({ key, qty: qn });
+    persistAll(); renderAll(); toast("Added to plan");
+  });
+
+  const baseBtn = document.createElement("button"); baseBtn.className = "ghost"; baseBtn.textContent = baseMarked ? "Unmark base" : "Mark as base";
+  baseBtn.title = "Treat this as a base ingredient (won’t require a recipe)";
+  baseBtn.addEventListener("click", () => { if (baseOverrides.has(key)) baseOverrides.delete(key); else baseOverrides.add(key); persistAll(); renderAll(); });
+
+  header.append(typeSelect, recipeSelect, search, favBtn, qty, addBtn, baseBtn);
+  recipeArea.append(header);
+
+  const details = document.createElement("div");
+  details.id = "recipeDetails";
+  details.style.marginTop = "8px";
+  recipeArea.append(details);
+
+  renderRecipeDetails();
+  renderTodo();
+
+  function renderRecipeDetails() {
+    const selectedId = recipeSelect.value || currentFav || ((groups[typeSelect.value] || [])[0] || recipeIds[0] || "");
+    const r = selectedId ? store.getRecipe(selectedId) : null;
+    details.innerHTML = "";
+    if (!r) return;
+
+    // Determine crafts needed for the currently selected output using this recipe
+    const outForSelected = r.outputs.find(o => (o.key || keyOf(o.item, o.meta || 0)) === key) || r.outputs[0];
+    const outPerCraft = Math.max(outForSelected?.count || 1, 1);
+    const currentNodeCrafts = craftsNeededForSelected(key, selectedId, outPerCraft);
+
+    const head = document.createElement("div");
+    head.innerHTML = `<span class="tag">${groupLabelForRecipe(r)}</span> • yields <span class="mono">${fmtQty(outPerCraft)}</span> per craft`;
+    details.appendChild(head);
+
+    // Resource cost — combine and multiply by crafts
+    const h1 = document.createElement("div"); h1.style.marginTop = "8px"; h1.innerHTML = "<strong>Resource cost (for this step)</strong>";
+    details.appendChild(h1);
+
+    const combinedInputs = combineInputsForDisplay(r.inputs, key, r.id).map(e => ({
+      ...e,
+      qty: e.qty * currentNodeCrafts
+    }));
+    const ulCost = document.createElement("ul"); ulCost.className = "list";
+    for (const entry of combinedInputs) {
+      const li = document.createElement("li");
+      const left = document.createElement("div"); left.className = "row";
+      left.appendChild(span(`${fmtQty(entry.qty)}× ${entry.label}`, ""));
+      if (entry.using) left.appendChild(tagEl(`using ${entry.using}`));
+      li.appendChild(left);
+      ulCost.appendChild(li);
+    }
+    if (!combinedInputs.length) {
+      const li = document.createElement("li"); li.appendChild(span("<span class='muted'>No inputs</span>", "")); ulCost.appendChild(li);
+    }
+    details.appendChild(ulCost);
+
+    // Outputs (multiplied)
+    const h2 = document.createElement("div"); h2.style.marginTop = "8px"; h2.innerHTML = "<strong>Outputs (total for this step)</strong>";
+    details.appendChild(h2);
+
+    const ulOut = document.createElement("ul"); ulOut.className = "list";
+    for (const o of r.outputs) {
+      const li = document.createElement("li");
+      const k = o.key || keyOf(o.item, o.meta || 0);
+      const total = Math.max(1, o.count || 1) * currentNodeCrafts;
+      li.appendChild(span(`${fmtQty(total)}× ${store.getItemName(k)}`, ""));
+      ulOut.appendChild(li);
+    }
+    details.appendChild(ulOut);
+
+    // Tag choosers (combined)
+    const tagInputs = (r.inputs || []).filter(x => !!x.tag);
+    if (tagInputs.length) {
+      const combinedTags = combineTagInputsForDisplay(tagInputs).map(t => ({ ...t, qty: t.qty * currentNodeCrafts }));
+      const h3 = document.createElement("div"); h3.style.marginTop = "8px"; h3.innerHTML = "<strong>Choose items for tags</strong> <span class='muted'>(applies to this recipe only)</span>";
+      details.appendChild(h3);
+
+      const list = document.createElement("ul"); list.className = "list";
+      for (const t of combinedTags) {
+        const li = document.createElement("li");
+        const left = document.createElement("div"); left.className = "row";
+        left.appendChild(span(`${fmtQty(t.qty)}× Tag: ${t.tag}`, ""));
+        const current = getRecipeTagChoice(key, r.id, t.tag);
+        if (current) left.appendChild(tagEl(`using ${store.getItemName(current)}`));
+        li.appendChild(left);
+
+        const right = document.createElement("div"); right.className = "row";
+        const choose = document.createElement("button"); choose.className = "icon"; choose.textContent = "Choose…";
+        choose.addEventListener("click", () => openTagChooserModal(t.tag, key, r.id));
+        const clear = document.createElement("button"); clear.className = "icon"; clear.textContent = "Clear";
+        clear.addEventListener("click", () => { setRecipeTagChoice(key, r.id, t.tag, null); renderInspector(); });
+        right.append(choose, clear);
+        li.appendChild(right);
+
+        list.appendChild(li);
+      }
+      details.appendChild(list);
+    }
+  }
+}
+
+// For inspector multiplication: how many crafts are currently required for the selected output
+function craftsNeededForSelected(outKey, recipeId, outPerCraft) {
+  // Build a quick plan view and take craftsNeeded from that node
+  const built = planner.build();
+  const node = built.nodes.get(outKey);
+  if (node && node.recipeId === recipeId) return Math.max(1, node.craftsNeeded || 1);
+  // Fallback: compute from targets if no node (e.g., not in plan yet). Use 1 craft.
+  return 1;
+}
+
+// Combine helpers
+function combineInputsForDisplay(inputs, outKeyCtx, recipeId) {
+  const map = new Map();
+  for (const ing of inputs) {
+    let label, using;
+    if (ing.tag) {
+      label = `Tag: ${ing.tag}`;
+      const chosen = getRecipeTagChoice(outKeyCtx, recipeId, ing.tag);
+      using = chosen ? store.getItemName(chosen) : null;
+    } else {
+      const k = ing.key || keyOf(ing.item, ing.meta || 0);
+      label = store.getItemName(k);
+    }
+    const qty = igCount(ing);
+    const key = label;
+    if (!map.has(key)) map.set(key, { qty: 0, label, using: using || null });
+    const obj = map.get(key);
+    obj.qty += qty;
+    if (using) obj.using = using;
+  }
+  return Array.from(map.values());
+}
+function combineTagInputsForDisplay(tagInputs) {
+  const map = new Map();
+  for (const ing of tagInputs) {
+    const tag = ing.tag;
+    const qty = igCount(ing);
+    if (!map.has(tag)) map.set(tag, { tag, qty: 0 });
+    map.get(tag).qty += qty;
+  }
+  return Array.from(map.values());
+}
+
+// Modal tag chooser
+const modalBackdrop = document.getElementById("modalBackdrop");
+const modTitle = document.getElementById("modTitle");
+const modBody = document.getElementById("modBody");
+const modFoot = document.getElementById("modFoot");
+document.getElementById("modClose").addEventListener("click", closeModal);
+modalBackdrop.addEventListener("click", (e) => { if (e.target === modalBackdrop) closeModal(); });
+
+function openModal(title, buildBody, buildFoot) {
+  modTitle.textContent = title;
+  modBody.innerHTML = "";
+  modFoot.innerHTML = "";
+  buildBody?.(modBody);
+  buildFoot?.(modFoot);
+  modalBackdrop.style.display = "flex";
+}
+function closeModal() { modalBackdrop.style.display = "none"; }
+
+function openTagChooserModal(tagName, outKeyCtx, recipeId) {
+  const candidates = store.tags.get(tagName) || [];
+  openModal(`Choose item for tag: ${tagName}`, (body) => {
+    const search = document.createElement("input");
+    search.type = "search";
+    search.placeholder = "Search candidates in this tag...";
+    body.appendChild(search);
+
+    const list = document.createElement("div"); list.style.display = "flex"; list.style.flexDirection = "column"; list.style.gap = "6px"; list.style.marginTop = "6px";
+    body.appendChild(list);
+
+    const current = getRecipeTagChoice(outKeyCtx, recipeId, tagName);
+
+    function render() {
+      list.innerHTML = "";
+      const q = (search.value || "").toLowerCase();
+      for (const k of candidates) {
+        const name = store.getItemName(k);
+        if (q && !name.toLowerCase().includes(q) && !k.toLowerCase().includes(q)) continue;
+        const row = document.createElement("div"); row.className = "row space"; row.style.borderBottom = "1px dashed #21262d"; row.style.padding = "6px 4px";
+        const left = document.createElement("div"); left.className = "row";
+        left.appendChild(itemPill(name, k));
+        if (current === k) left.appendChild(tagEl("current"));
+        const right = document.createElement("div");
+        const use = document.createElement("button"); use.className = "icon"; use.textContent = "Use";
+        use.addEventListener("click", () => { setRecipeTagChoice(outKeyCtx, recipeId, tagName, k); closeModal(); renderInspector(); });
+        right.appendChild(use);
+        row.append(left, right); list.appendChild(row);
+      }
+    }
+    search.addEventListener("input", render);
+    render();
+  }, (foot) => {
+    const clear = document.createElement("button"); clear.className = "ghost"; clear.textContent = "Clear choice";
+    clear.addEventListener("click", () => { setRecipeTagChoice(outKeyCtx, recipeId, tagName, null); closeModal(); renderInspector(); });
+    const close = document.createElement("button"); close.className = "icon"; close.textContent = "Close";
+    close.addEventListener("click", closeModal);
+    foot.append(clear, close);
+  });
+}
+
+// Grouping helpers
+function groupLabelForRecipe(r) { return r.type === "gregtech" ? (r.machine || "gregtech") : (r.type || "crafting"); }
+function groupRecipesByType(recipeIds) { const groups = {}; for (const id of recipeIds) { const r = store.getRecipe(id); const label = groupLabelForRecipe(r); if (!groups[label]) groups[label] = []; groups[label].push(id); } return groups; }
+function cssEscape(s){ return s.replace(/["\\]/g, "\\$&"); }
+function prettyMachine(r) { const t = (r.machine || r.type || "crafting").toString(); return t.includes(":") ? t.split(":")[1] : t; }
+function summInputs(r) { return r.inputs.map(ingredientLabel).join(" + "); }
+function ingredientLabel(ing) {
+  const qty = igCount(ing);
+  if (ing.tag) return `${qty}× <em>${ing.tag}</em>`;
+  const key = ing.key || keyOf(ing.item, ing.meta || 0);
+  const name = store.getItemName(key);
+  if (ing.unit === "mB" || (ing.item || "").startsWith("fluid:")) return `${fmtQty(qty)} mB ${name.replace(/^fluid:/, "")}`;
+  return `${fmtQty(qty)}× ${name}`;
+}
+
+// Regex helpers
+function buildRegexEntry(name, idNum) {
+  const safeName = String(name)
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\(/g, '\\(')
+    .replace(/\)/g, '\\)');
+  return `"^${safeName}$"${idNum ?? 0}`;
+}
+function compactJoin(entries) { return entries.join("|"); }
+
+// Plan + To‑do (unchanged logic; includes Copy Regex buttons)
+function renderPlan() {
+  const { nodes, edges, toGather } = planner.build();
+
+  // Targets
+  targetsArea.innerHTML = "<div><strong>Targets</strong></div>";
+  if (!planTargets.length) targetsArea.appendChild(p("<span class='muted'>No targets. Select an item and click “Add to plan”.</span>"));
+  else {
+    for (const t of planTargets) {
+      const row = document.createElement("div"); row.className = "row space";
+      const left = document.createElement("div"); left.appendChild(itemPill(store.getItemName(t.key), t.key));
+      const right = document.createElement("div");
+      const input = document.createElement("input"); input.type = "number"; input.min = "1"; input.step = "1"; input.value = t.qty;
+      input.addEventListener("change", () => { t.qty = Math.max(1, Math.floor(Number(input.value) || 1)); persistAll(); renderPlan(); });
+      const del = document.createElement("button"); del.className = "icon"; del.title = "Remove"; del.textContent = "✕";
+      del.addEventListener("click", () => { planTargets = planTargets.filter(x => x !== t); persistAll(); renderAll(); });
+      right.append(input, del); row.append(left, right); targetsArea.appendChild(row);
+    }
+  }
+
+  // Remaining to gather + Copy Regex
+  {
+    const head = document.createElement("div");
+    head.innerHTML = `<strong>Remaining to gather</strong> <span class="muted">(base items, unresolved tags, or items that need a recipe)</span>`;
+    const btn = document.createElement("button");
+    btn.className = "icon";
+    btn.textContent = "Copy Regex";
+    btn.style.marginLeft = "8px";
+    btn.title = "Copy a compact Regex list of everything in Remaining to gather";
+    btn.addEventListener("click", () => {
+      const list = (toGather || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+      const parts = [];
+      for (const g of list) {
+        if (g.key.startsWith("tag:") || g.key.startsWith("fluid:")) continue;
+        if (checkedStorage.has(g.key)) continue;
+        const idNum = store.getMetaId(g.key);
+        parts.push(buildRegexEntry(g.name, idNum));
+      }
+      const text = compactJoin(parts);
+      if (!text) { toast("Nothing to copy"); return; }
+      copyText(text);
+    });
+    const wrap = document.createElement("div");
+    wrap.className = "row";
+    wrap.style.alignItems = "center";
+    wrap.appendChild(head);
+    wrap.appendChild(btn);
+    gatherSummary.innerHTML = "";
+    gatherSummary.appendChild(wrap);
+  }
+
+  // Gather list
+  if (!toGather.length) { gatherSummary.appendChild(p("<span class='accent'>Nothing left to gather.</span>")); }
+  else {
+    const ul = document.createElement("ul"); ul.className = "list";
+    for (const g of toGather) {
+      const li = document.createElement("li");
+      if (gatherMarked.has(g.key)) li.classList.add("gather-done");
+
+      const left = document.createElement("div"); left.className = "row";
+      const pill = itemPill(g.name, g.key);
+      pill.style.cursor = "pointer";
+      pill.title = "Click to highlight steps that use this ingredient";
+      pill.addEventListener("click", () => setIngredientFocus(g.key));
+      left.appendChild(pill);
+      if (g.reason === "needs-choice" && !g.isBaseOverride) left.appendChild(tagEl("needs recipe", "warn"));
+      if (g.reason === "unresolved-tag") left.appendChild(tagEl("unresolved tag", "warn"));
+
+      const copyBtn = document.createElement("button"); copyBtn.className = "icon"; copyBtn.textContent = "Copy";
+      copyBtn.title = `Copy “${g.name}”`;
+      copyBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        if (checkedStorage.has(g.key)) { toast("Item is checked in storage; skipped"); return; }
+        copyText(buildRegexEntry(g.name, store.getMetaId(g.key)));
+      });
+      left.appendChild(copyBtn);
+
+      const right = document.createElement("div"); right.className = "row";
+      right.appendChild(span(`${fmtQty(g.qty)}`, "mono"));
+
+      if (g.reason === "needs-choice" && !g.isBaseOverride) {
+        const choose = document.createElement("button"); choose.className = "icon choose-btn"; choose.textContent = "Choose";
+        choose.addEventListener("click", () => focusInspectorOnKey(g.key));
+        const markBase = document.createElement("button"); markBase.className = "icon"; markBase.textContent = "Mark base";
+        markBase.addEventListener("click", () => { baseOverrides.add(g.key); persistAll(); renderAll(); });
+        right.append(choose, markBase);
+      } else {
+        right.appendChild(obtainedControl(g.key));
+      }
+
+      const markBtn = document.createElement("button"); markBtn.className = "icon"; markBtn.textContent = gatherMarked.has(g.key) ? "Unmark" : "Mark done";
+      markBtn.addEventListener("click", () => { if (gatherMarked.has(g.key)) gatherMarked.delete(g.key); else gatherMarked.add(g.key); renderPlan(); });
+      right.appendChild(markBtn);
+
+      li.append(left, right); ul.appendChild(li);
+    }
+    gatherSummary.appendChild(ul);
+  }
+
+  // Tree
+  const children = new Map(); const roots = new Set(planTargets.map(t => t.key));
+  for (const e of edges) { if (!children.has(e.parentKey)) children.set(e.parentKey, []); children.get(e.parentKey).push(e); }
+  treeArea.innerHTML = "";
+  if (!planTargets.length) treeArea.appendChild(p("<span class='muted'>No plan to display.</span>"));
+  else {
+    const ul = document.createElement("ul");
+    for (const root of roots) ul.appendChild(renderNode(root, nodes, children));
+    treeArea.appendChild(ul);
+  }
+
+  renderTodo({ nodes, edges });
+}
+
+function renderNode(key, nodes, children) {
+  const node = nodes.get(key) || planner.createNode(key);
+  const li = document.createElement("li");
+  const head = document.createElement("div"); head.className = "node";
+
+  const hasChildren = children.get(key)?.length > 0;
+  const toggle = document.createElement("div"); toggle.className = "toggle"; toggle.textContent = hasChildren ? (planner.openNodes.has(key) ? "▾" : "▸") : "•";
+  if (hasChildren) toggle.addEventListener("click", () => { if (planner.openNodes.has(key)) planner.openNodes.delete(key); else planner.openNodes.add(key); renderPlan(); });
+  head.appendChild(toggle);
+
+  head.appendChild(itemPill(node.name, key));
+
+  const middle = document.createElement("div");
+  const info = [];
+  if (node.isBaseOverride) info.push(`<span class="tag">base</span>`);
+  else if (node.needsChoice) info.push(`<span class="tag warn">needs recipe</span>`);
+  else if (node.recipeId) {
+    info.push(`<span class="tag">${prettyMachine(store.getRecipe(node.recipeId))}</span>`);
+    if (node.craftsNeeded > 0) info.push(`<span class="muted">crafts: <span class="mono">${fmtQty(node.craftsNeeded)}</span> × <span class="mono">${fmtQty(node.outPerCraft)}</span></span>`);
+  } else info.push(`<span class="tag">base</span>`);
+  middle.innerHTML = info.join(" ");
+  head.appendChild(middle);
+
+  const right = document.createElement("div"); right.className = "row";
+  right.appendChild(span(`${fmtQty(node.remaining)} / ${fmtQty(node.requested)}`, "mono"));
+  if (node.needsChoice && !node.isBaseOverride) {
+    const choose = document.createElement("button"); choose.className = "icon choose-btn"; choose.textContent = "Choose";
+    choose.addEventListener("click", () => focusInspectorOnKey(node.key));
+    right.appendChild(choose);
+  } else right.appendChild(obtainedControl(key));
+
+  head.appendChild(right);
+  li.appendChild(head);
+
+  if (hasChildren && planner.openNodes.has(key)) {
+    const ul = document.createElement("ul");
+    for (const e of children.get(key)) {
+      const childLi = document.createElement("li");
+      childLi.appendChild(span(`${ingredientLabel(e.via)} → need ${fmtQty(e.requiredQty)}`, "muted"));
+      childLi.appendChild(renderNode(e.childKey, nodes, children));
+      ul.appendChild(childLi);
+    }
+    li.appendChild(ul);
+  }
+  return li;
+}
+
+function renderTodo(build) {
+  const B = build || planner.build(); const { nodes, edges } = B;
+  todoArea.innerHTML = "<div><strong>To‑do</strong> <span class='muted'>(base=1 → final=max; grouped by machine, then name)</span></div>";
+
+  // Toolbar: Copy Regex (all steps)
+  const todoToolbar = document.createElement("div");
+  todoToolbar.className = "row";
+  todoToolbar.style.margin = "6px 0 8px 0";
+  const btnTodoRegex = document.createElement("button");
+  btnTodoRegex.className = "icon";
+  btnTodoRegex.textContent = "Copy Regex";
+  btnTodoRegex.title = "Copy a compact Regex list for all items in To‑do steps (excluding Checked Storage)";
+  btnTodoRegex.addEventListener("click", () => {
+    const again = build || planner.build();
+    const parts = [];
+    for (const [k, n] of again.nodes.entries()) {
+      if (!(n.recipeId && n.craftsNeeded > 0)) continue;
+      if (k.startsWith("tag:") || k.startsWith("fluid:")) continue;
+      if (checkedStorage.has(k)) continue;
+      const idNum = store.getMetaId(k);
+      parts.push(buildRegexEntry(n.name, idNum));
+    }
+    parts.sort();
+    const text = compactJoin(parts);
+    if (!text) { toast("Nothing to copy"); return; }
+    copyText(text);
+  });
+  todoToolbar.appendChild(btnTodoRegex);
+  todoArea.appendChild(todoToolbar);
+
+  const craftable = new Set(); for (const [k, n] of B.nodes.entries()) if (n.recipeId && n.craftsNeeded > 0) craftable.add(k);
+  if (!craftable.size) { todoArea.appendChild(p("<span class='muted'>No crafting steps pending.</span>")); return; }
+
+  // levels
+  const parentsMap = new Map(); const indeg = new Map(); for (const k of craftable) indeg.set(k, 0);
+  for (const e of edges) if (craftable.has(e.parentKey) && craftable.has(e.childKey)) {
+    if (!parentsMap.has(e.childKey)) parentsMap.set(e.childKey, []); parentsMap.get(e.childKey).push(e.parentKey);
+    indeg.set(e.parentKey, (indeg.get(e.parentKey) || 0) + 1);
+  }
+  const levels = new Map(); const queue = [];
+  for (const [k,d] of indeg.entries()) if (d===0) { queue.push(k); levels.set(k,1); }
+  while (queue.length) { const k = queue.shift(); for (const p of (parentsMap.get(k) || [])) {
+      const nextL = (levels.get(k) || 1) + 1; levels.set(p, Math.max(levels.get(p) || 1, nextL));
+      indeg.set(p, indeg.get(p) - 1); if (indeg.get(p) === 0) queue.push(p);
+  }}
+  let maxL=1; for (const v of levels.values()) maxL=Math.max(maxL,v); for (const k of craftable) if (!levels.has(k)) levels.set(k,maxL+1);
+
+  const steps = [];
+  for (const k of craftable) {
+    const n = B.nodes.get(k); const r = store.getRecipe(n.recipeId);
+    steps.push({ key:k, name:n.name, machine: prettyMachine(r), level: levels.get(k)||1, crafts:n.craftsNeeded, outPerCraft:n.outPerCraft, totalOut:n.craftsNeeded*n.outPerCraft, recipeId:n.recipeId, remaining:n.remaining });
+  }
+  steps.sort((a,b)=> a.level-b.level || a.machine.localeCompare(b.machine) || a.name.localeCompare(b.name));
+
+  let currentLevel = -1;
+  for (const s of steps) {
+    if (s.level !== currentLevel) {
+      currentLevel = s.level;
+
+      const hdr = document.createElement("div"); hdr.className = "level-title";
+      const levelForThisHeader = currentLevel;
+      const titleText = levelForThisHeader===1 ? "Step 1 (base)" : `Step ${levelForThisHeader}`;
+      const leftSpan = document.createElement("span"); leftSpan.textContent = titleText;
+
+      const btnStepRegex = document.createElement("button");
+      btnStepRegex.className = "icon";
+      btnStepRegex.textContent = "Copy Regex";
+      btnStepRegex.title = `Copy a compact Regex list for items in ${titleText} (excluding Checked Storage)`;
+      btnStepRegex.style.marginLeft = "8px";
+      btnStepRegex.addEventListener("click", () => {
+        const levelParts = [];
+        for (const s2 of steps) {
+          if (s2.level !== levelForThisHeader) continue;
+          const k = s2.key;
+          if (k.startsWith("tag:") || k.startsWith("fluid:")) continue;
+          if (checkedStorage.has(k)) continue;
+          const idNum = store.getMetaId(k);
+          levelParts.push(buildRegexEntry(s2.name, idNum));
+        }
+        levelParts.sort();
+        const text = compactJoin(levelParts);
+        if (!text) { toast("Nothing to copy for this step"); return; }
+        copyText(text);
+      });
+
+      const wrapRow = document.createElement("div");
+      wrapRow.className = "row";
+      wrapRow.appendChild(leftSpan);
+      wrapRow.appendChild(btnStepRegex);
+      hdr.innerHTML = "";
+      hdr.appendChild(wrapRow);
+      todoArea.appendChild(hdr);
+    }
+
+    const step = document.createElement("div"); step.className = "step";
+    const craftsNow = craftsPossibleFor(s.key, s.recipeId);
+
+    if (craftsNow >= s.crafts) step.classList.add("craftable-now");
+    else if (craftsNow >= 1) step.classList.add("partially-craftable");
+    if (checkedStorage.has(s.key)) step.classList.add("checked-storage");
+
+    if (ingredientFocusKey && recipeUsesKey(store.getRecipe(s.recipeId), s.key, ingredientFocusKey)) step.classList.add("ingredient-focus");
+
+    const left = document.createElement("div"); left.className = "meta"; left.addEventListener("click", () => focusInspectorOnKey(s.key));
+    const need = Math.max(0, (B.nodes.get(s.key)?.remaining) || 0);
+    left.appendChild(itemPill(`${fmtQty(need)}x ${s.name}`, s.key));
+    left.appendChild(tagEl(s.machine));
+    if (craftsNow > 0) left.appendChild(tagEl(`craftable: ${fmtQty(craftsNow)}`));
+    const copyBtn = document.createElement("button"); copyBtn.className = "icon"; copyBtn.title = `Copy “${s.name}”`; copyBtn.textContent = "Copy";
+    copyBtn.addEventListener("click", (ev) => { ev.stopPropagation(); copyText(s.name); });
+    left.appendChild(copyBtn);
+    left.appendChild(span(`<span class="muted">crafts: <span class="mono">${fmtQty(s.crafts)}</span> × <span class="mono">${fmtQty(s.outPerCraft)}</span> → <span class="mono">${fmtQty(s.totalOut)}</span></span>`, ""));
+    step.appendChild(left);
+
+    const right = document.createElement("div"); right.className = "right";
+    const ownedWrap = document.createElement("label"); ownedWrap.className = "small"; ownedWrap.textContent = "Owned:";
+    const ownedInput = document.createElement("input"); ownedInput.type = "number"; ownedInput.className = "owned"; ownedInput.min="0"; ownedInput.step="1"; ownedInput.value = obtainedNumber(s.key);
+    ownedInput.addEventListener("change", () => { const val = Math.max(0, Math.floor(Number(ownedInput.value)||0)); obtained.set(s.key, val); renderAll(); });
+    ownedWrap.appendChild(ownedInput);
+    right.appendChild(ownedWrap);
+
+    const chkWrap = document.createElement("label"); chkWrap.className = "small"; chkWrap.textContent = "Checked Storage";
+    const chk = document.createElement("input"); chk.type = "checkbox"; chk.checked = checkedStorage.has(s.key);
+    chk.addEventListener("change", () => { if (chk.checked) checkedStorage.add(s.key); else checkedStorage.delete(s.key); step.classList.toggle("checked-storage", chk.checked); });
+    chkWrap.prepend(chk);
+    right.appendChild(chkWrap);
+
+    const needLabel = document.createElement("span"); needLabel.className = "small"; needLabel.innerHTML = `Need: <span class="mono">${fmtQty(need)}</span>`;
+    right.appendChild(needLabel);
+
+    const btnOne = document.createElement("button"); btnOne.className = "icon"; btnOne.textContent = "+1 craft"; btnOne.title = `Add ${s.outPerCraft} obtained`;
+    btnOne.addEventListener("click", () => { bumpObtained(s.key, s.outPerCraft); });
+    const btnAll = document.createElement("button"); btnAll.className = "primary"; btnAll.textContent = "Mark done"; btnAll.title = `Add ${need} obtained`;
+    btnAll.addEventListener("click", () => { bumpObtained(s.key, need); });
+    right.append(btnOne, btnAll);
+
+    step.appendChild(right);
+    todoArea.appendChild(step);
+  }
+}
+
+function bumpObtained(key, delta) {
+  const cur = obtainedNumber(key);
+  const next = cur + Math.max(0, Math.floor(delta || 0));
+  obtained.set(key, next); renderAll();
+}
+
+// DOM helpers
+function p(html) { const el = document.createElement("p"); el.innerHTML = html; return el; }
+function span(text, cls) { const s = document.createElement("span"); s.innerHTML = text; if (cls) s.className = cls; return s; }
+function tagEl(text, cls){ const e = document.createElement("span"); e.className = `tag${cls ? " "+cls : ""}`; e.textContent = text; return e; }
+function itemPill(name, key) {
+  const d = document.createElement("div"); d.className = "pill";
+  const hue = (hashCode(key) % 360 + 360) % 360;
+  const emblem = document.createElement("span"); Object.assign(emblem.style, { display:"inline-block", width:"12px", height:"12px", borderRadius:"3px", background:`hsl(${hue} 70% 45%)` });
+  d.appendChild(emblem);
+  const label = document.createElement("span"); label.textContent = name; d.appendChild(label);
+  if (store.outputsFor(key).length) {
+    const star = document.createElement("span"); const isFav = favorites.has(key);
+    star.className = "fav"; star.title = isFav ? "Recipe selected" : "Click to select recipe"; star.textContent = isFav ? "★" : "☆";
+    star.addEventListener("click", (e) => { e.stopPropagation(); pickFavoriteViaDialog(key); });
+    d.appendChild(star);
+  }
+  return d;
+}
+function obtainedControl(key) {
+  const wrap = document.createElement("div"); wrap.className = "row";
+  const minus = document.createElement("button"); minus.className = "icon"; minus.textContent = "−";
+  const input = document.createElement("input"); input.type = "number"; input.min = "0"; input.step = "1"; input.value = obtainedNumber(key);
+  const plus = document.createElement("button"); plus.className = "icon"; plus.textContent = "+";
+  minus.addEventListener("click", () => { const cur = obtainedNumber(key); const next = Math.max(0, cur - 1); obtained.set(key, next); renderPlan(); });
+  plus.addEventListener("click", () => { const cur = obtainedNumber(key); const next = cur + 1; obtained.set(key, next); renderPlan(); });
+  input.addEventListener("change", () => { let val = Math.max(0, Math.floor(Number(input.value) || 0)); obtained.set(key, val); renderPlan(); });
+  wrap.append(minus, input, plus); return wrap;
+}
+function obtainedNumber(key) { return Number(obtained.get(key) || 0); }
+
+// Favorite recipe chooser modal
+function pickFavoriteViaDialog(outKey) {
+  const recipes = store.outputsFor(outKey).map(id => ({ id, r: store.getRecipe(id) }));
+  openModal(`Choose recipe for ${store.getItemName(outKey)}`, (body) => {
+    const list = document.createElement("div"); list.style.display = "flex"; list.style.flexDirection = "column"; list.style.gap = "6px";
+    for (const {id, r} of recipes) {
+      const row = document.createElement("div"); row.className = "row space"; row.style.borderBottom = "1px dashed #21262d"; row.style.padding = "6px 4px";
+      const left = document.createElement("div"); left.className = "row";
+      left.appendChild(tagEl(prettyMachine(r)));
+      left.appendChild(span(`yields ${fmtQty((r.outputs[0]?.count)||1)} • ${summInputs(r)}`));
+      const right = document.createElement("div");
+      const use = document.createElement("button"); use.className = "icon"; use.textContent = "Use";
+      use.addEventListener("click", () => { favorites.set(outKey, id); persistAll(); closeModal(); renderAll(); });
+      right.appendChild(use);
+      row.append(left, right); list.appendChild(row);
+    }
+    body.appendChild(list);
+  }, (foot) => {
+    const close = document.createElement("button"); close.className = "icon"; close.textContent = "Close";
+    close.addEventListener("click", closeModal);
+    foot.appendChild(close);
+  });
+}
+
+/* ---------- Clipboard ---------- */
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); toast("Copied to clipboard"); }
+  catch {
+    const ta = document.createElement("textarea");
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand("copy"); ta.remove();
+    toast("Copied to clipboard");
+  }
+}
+
+/* ---------- RecEx normalizer (records metaId) ---------- */
+
+const ANY_CIRCUIT_TAGS = new Map([
+  ["any ulv circuit","circuitPrimitive"],
+  ["any lv circuit","circuitBasic"],
+  ["any mv circuit","circuitGood"],
+  ["any hv circuit","circuitAdvanced"],
+  ["any ev circuit","circuitData"],
+  ["any iv circuit","circuitElite"],
+  ["any luv circuit","circuitMaster"],
+  ["any zpm circuit","circuitUltimate"],
+  ["any uv circuit","circuitSuperconductor"],
+  ["any uhv circuit","circuitInfinite"],
+  ["any uev circuit","circuitBio"],
+  ["any uiv circuit","circuitOptical"],
+  ["any umv circuit","circuitExotic"],
+  ["any uxv circuit","circuitCosmic"],
+  ["any max circuit","circuitTranscendent"],
+]);
+
+function canonIngredient(ing) { if (ing.tag) return `tag:${ing.tag}#${ing.count||1}`; const key = ing.key || keyOf(ing.item, ing.meta || 0); return `item:${key}#${ing.count||1}#${ing.unit||"item"}`; }
+function canonOutput(out) { const key = out.key || keyOf(out.item, out.meta || 0); return `item:${key}#${out.count||1}#${out.unit||"item"}`; }
+function stableIdForRecipe(type, machine, inputs, outputs) { const sInputs = inputs.map(canonIngredient).sort().join("|"); const sOutputs = outputs.map(canonOutput).sort().join("|"); const core = `${type}|${machine||""}|${sInputs}=>${sOutputs}`; return `${type}/${stableHashHex(core)}`; }
+
+function normalizeFromRecEx(raw, opts) {
+  const itemsMap = new Map(); const tags = new Map(); const recipes = [];
+  const keyOfMeta = (id, m = 0) => (m ? `${id}@${m|0}` : id);
+  const addItem = (key, displayName, metaId) => {
+    if (!key) return;
+    if (!itemsMap.has(key)) itemsMap.set(key, { displayName, metaId: (typeof metaId === "number" ? metaId : undefined) });
+    else {
+      const it = itemsMap.get(key);
+      if (typeof metaId === "number" && typeof it.metaId !== "number") it.metaId = metaId;
+      if (!it.displayName && displayName) it.displayName = displayName;
+    }
+  };
+  const addTagItem = (tag, itemKey) => { if (!tag) return; if (!tags.has(tag)) tags.set(tag, new Set()); tags.get(tag).add(itemKey); };
+
+  const isProgrammedCircuit = (obj) => {
+    const id = (obj?.uN || obj?.id || "").toLowerCase();
+    const name = (obj?.lN || "").toLowerCase();
+    return id.includes("integrated_circuit") || /programmed\s*circuit/.test(name);
+  };
+
+  function detectAnyCircuitTagNameLike(obj) {
+    const label = String(obj?.lN || obj?.uN || "").trim().toLowerCase();
+    const normalized = label.replace(/\s+/g, " ");
+    return ANY_CIRCUIT_TAGS.get(normalized) || null;
+  }
+
+  const parseItemLike = (obj, { asOutput = false } = {}) => {
+    if (!obj || typeof obj !== "object") return null;
+
+    const circuitTag = detectAnyCircuitTagNameLike(obj);
+    if (circuitTag) return { tag: circuitTag, count: Math.max(1, (obj.a | 0) || 1) };
+
+    if ("dns" in obj && Array.isArray(obj.dns)) {
+      const tag = String(obj.dns[0] || "");
+      const ims = Array.isArray(obj.ims) ? obj.ims : [];
+      let count = 1; if (ims.length && typeof ims[0]?.a === "number") count = (ims[0].a | 0) || 1;
+
+      for (const im of ims) {
+        if (im?.uN) { const key = im.uN; addItem(key, im.lN || im.uN); addTagItem(tag, key); }
+        else if (im?.id) { const key = keyOfMeta(im.id, im.m || 0); addItem(key, im.lN || `${im.id}${im.m ? ` [${im.m}]` : ""}`, typeof im.m === "number" ? im.m : undefined); addTagItem(tag, key); }
+      }
+
+      if (asOutput && ims.length) {
+        const first = ims[0];
+        if (first?.uN) { const key = first.uN; addItem(key, first.lN || first.uN); return { item: key, key, count: Math.max(1, count), unit: "item" }; }
+        if (first?.id) { const key = keyOfMeta(first.id, first.m || 0); addItem(key, first.lN || `${first.id}${first.m ? ` [${first.m}]` : ""}`, typeof first.m === "number" ? first.m : undefined); return { item: key, key, count: Math.max(1, count), unit: "item" }; }
+      }
+      return { tag, count: Math.max(1, count) };
+    }
+
+    if (isProgrammedCircuit(obj) && !opts.consumeCircuits) return null;
+
+    if (obj.uN) {
+      const key = obj.uN; const count = Math.max(1, (obj.a | 0) || 1);
+      addItem(key, obj.lN || key);
+      return { item: key, key, count, unit: "item" };
+    }
+    if (obj.id) {
+      const key = keyOfMeta(obj.id, obj.m || 0); const count = Math.max(1, (obj.a | 0) || 1);
+      const name = obj.lN || `${obj.id}${obj.m ? ` [${obj.m}]` : ""}`;
+      addItem(key, name, typeof obj.m === "number" ? obj.m : undefined);
+      return { item: key, key, count, unit: "item" };
+    }
+    return null;
+  };
+
+  const parseFluid = (obj) => {
+    if (!obj || typeof obj !== "object") return null;
+    const rawId = obj.uN || obj.id || obj.lN || "";
+    const key = `fluid:${rawId}`;
+    const count = Math.max(1, (obj.a | 0) || 1);
+    addItem(key, obj.lN || rawId);
+    return { item: key, key, count, unit: "mB" };
+  };
+
+  const pushRecipe = (rec) => { if (!rec.outputs?.length) return; rec.id = rec.id || `r_${uid()}`; recipes.push(rec); };
+
+  const collectCircuitsFromObj = (o, into) => {
+    if (!o || typeof o !== "object") return;
+    const candidates = ["cfg", "circuit", "circuits", "pc", "config", "configNumber"];
+    for (const k of candidates) {
+      const v = o[k];
+      if (typeof v === "number" && Number.isFinite(v)) into.push(v|0);
+      else if (Array.isArray(v)) for (const n of v) if (Number.isFinite(Number(n))) into.push(Number(n)|0);
+      else if (typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v))) into.push(Number(v)|0);
+    }
+  };
+
+  const sources = Array.isArray(raw.sources) ? raw.sources : [];
+  let gtMachineIdx = 0;
+
+  for (const src of sources) {
+    const type = (src.type || (Array.isArray(src.machines) ? "gregtech" : "")).toString();
+
+    if (type === "gregtech") {
+      const machines = Array.isArray(src.machines) ? src.machines : [];
+      for (const m of machines) {
+        const machineName = m.n || "gregtech";
+        const recs = Array.isArray(m.recs) ? m.recs : [];
+        let recIdx = 0;
+        for (const r of recs) {
+          recIdx++;
+          if (r && r.en === false) continue;
+
+          const inputs = []; const outputs = [];
+          const circuitNumbers = [];
+          collectCircuitsFromObj(r, circuitNumbers);
+
+          for (const it of (Array.isArray(r.iI) ? r.iI : [])) {
+            if (isProgrammedCircuit(it) && Number.isFinite(Number(it.m))) circuitNumbers.push(Number(it.m)|0);
+            collectCircuitsFromObj(it, circuitNumbers);
+            const ing = parseItemLike(it, { asOutput: false }); if (ing) inputs.push(ing);
+          }
+          for (const it of (Array.isArray(r.iO) ? r.iO : [])) {
+            const out = parseItemLike(it, { asOutput: true });
+            if (out) {
+              if (out.tag) outputs.push({ item: `tag:${out.tag}`, key: `tag:${out.tag}`, count: out.count, unit: "item" });
+              else outputs.push({ item: out.item, key: out.key, count: Math.max(1, out.count || 1), unit: "item" });
+            }
+          }
+
+          for (const fl of (Array.isArray(r.fI) ? r.fI : [])) { const ing = parseFluid(fl); if (ing) inputs.push(ing); }
+          for (const fl of (Array.isArray(r.fO) ? r.fO : [])) { const out = parseFluid(fl); if (out) outputs.push(out); }
+
+          if (!outputs.length) continue;
+
+          pushRecipe({
+            id: `gt:${machineName}/${gtMachineIdx}_${recIdx}`,
+            type: "gregtech", machine: machineName,
+            euPerTick: (typeof r.eut === "number") ? r.eut : null,
+            duration: (typeof r.dur === "number") ? r.dur : null,
+            inputs, outputs, circuits: Array.from(new Set(circuitNumbers))
+          });
+        }
+        gtMachineIdx++;
+      }
+    } else if (type === "shaped" || type === "shapeless" || type === "shapedOreDict") {
+      const recipesArr = Array.isArray(src.recipes) ? src.recipes : [];
+      for (const r of recipesArr) {
+        const inputs = [];
+        for (const it of (Array.isArray(r.iI) ? r.iI : [])) { const ing = parseItemLike(it, { asOutput: false }); if (ing) inputs.push(ing); }
+        const outputs = [];
+        if (r.o) {
+          const out = parseItemLike(r.o, { asOutput: true });
+          if (out) {
+            if (out.tag) outputs.push({ item: `tag:${out.tag}`, key: `tag:${out.tag}`, count: out.count, unit: "item" });
+            else outputs.push({ item: out.item, key: out.key, count: Math.max(1, out.count || 1), unit: "item" });
+          }
+        }
+        if (!outputs.length) continue;
+
+        const idStable = stableIdForRecipe(type, type, inputs, outputs);
+        pushRecipe({ id: idStable, type, machine: type, inputs, outputs });
+      }
+    }
+  }
+
+  const items = Array.from(itemsMap.entries()).map(([key, v]) => {
+    const [id, metaStr] = key.split("@");
+    const meta = metaStr ? Number(metaStr) : 0;
+    const obj = { id, meta, displayName: v.displayName };
+    if (typeof v.metaId === "number") obj.metaId = v.metaId;
+    return obj;
+  });
+  const tagsObj = {}; for (const [tag, set] of tags.entries()) tagsObj[tag] = Array.from(set);
+  return { items, tags: tagsObj, recipes };
+}
+
+// Importers, ZIP helpers, download, toast, focus
+async function importRecExFile(file) {
+  if (file.name.endsWith(".zip")) {
+    showProgress("Reading ZIP…", 0);
+    const buf = new Uint8Array(await file.arrayBuffer());
+    const entries = await listJsonEntriesFromZip(buf);
+    if (!entries.length) throw new Error("No .json or .json.gz found in ZIP");
+    let merged = null; let processed = 0;
+    for (const ent of entries) {
+      processed++;
+      showProgress(`Reading ${ent.name} (${processed}/${entries.length})`, processed / entries.length);
+      let data;
+      if (ent.name.endsWith(".gz") || ent.name.endsWith(".json.gz"))
+        data = await gunzip(ent.data, (p) => showProgress(`Decompressing ${ent.name}… ${Math.round(p*100)}%`, (processed - 1 + p) / entries.length));
+      else if (ent.compression === 0) data = ent.data;
+      else if (ent.compression === 8)
+        data = await inflateRaw(ent.data, (p) => showProgress(`Inflating ${ent.name}… ${Math.round(p*100)}%`, (processed - 1 + p) / entries.length));
+      else { console.warn(`Skipping ${ent.name}: unsupported compression ${ent.compression}`); continue; }
+      const text = new TextDecoder().decode(data);
+      const doc = safeParseJSON(text);
+      if (!doc || !Array.isArray(doc.sources)) continue;
+      merged = merged ? mergeRecExDocs(merged, doc) : doc;
+    }
+    if (!merged) throw new Error("No valid RecEx export JSON found in ZIP");
+    await parseRecExObject(merged);
+  } else if (file.name.endsWith(".gz") || file.type === "application/gzip") {
+    showProgress("Decompressing GZIP…", 0);
+    const data = await gunzip(new Uint8Array(await file.arrayBuffer()), (p) => showProgress(`Decompressing… ${Math.round(p*100)}%`, p));
+    const text = new TextDecoder().decode(data);
+    const obj = safeParseJSON(text);
+    if (!obj || !Array.isArray(obj.sources)) throw new Error("Invalid RecEx JSON");
+    await parseRecExObject(obj);
+  } else {
+    showProgress("Reading JSON…", 0);
+    const text = await file.text();
+    const obj = safeParseJSON(text);
+    if (!obj || !Array.isArray(obj.sources)) throw new Error("Invalid RecEx JSON");
+    await parseRecExObject(obj);
+  }
+  hideProgress();
+  toast(`Loaded ${store.items.size} items, ${store.recipes.size} recipes`);
+  renderAll();
+}
+function safeParseJSON(text) { try { return JSON.parse(text); } catch { return null; } }
+async function parseRecExObject(raw) {
+  showProgress("Normalizing recipes…", 0.1);
+  const norm = normalizeFromRecEx(raw, { consumeCircuits: circuitsConsumed });
+  store.importNormalized(norm);
+  hideProgress();
+}
+function mergeRecExDocs(a, b) {
+  const out = { sources: [] };
+  if (Array.isArray(a.sources)) out.sources.push(...a.sources);
+  if (Array.isArray(b.sources)) out.sources.push(...b.sources);
+  return out;
+}
+
+async function listJsonEntriesFromZip(u8) {
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  const EOCD = 0x06054b50, CEN = 0x02014b50, LOC = 0x04034b50;
+  const maxComment = Math.min(0xFFFF, u8.length);
+  let eocdPos = -1;
+  for (let i = u8.length - 22; i >= Math.max(0, u8.length - 22 - maxComment); i--)
+    if (dv.getUint32(i, true) === EOCD) { eocdPos = i; break; }
+  if (eocdPos < 0) throw new Error("ZIP: End of Central Directory not found");
+  const totalEntries = dv.getUint16(eocdPos + 10, true);
+  const cenOffset = dv.getUint32(eocdPos + 16, true);
+
+  const entries = [];
+  let ptr = cenOffset;
+  for (let i = 0; i < totalEntries; i++) {
+    if (dv.getUint32(ptr, true) !== CEN) throw new Error("ZIP: Central directory bad signature");
+    const compMethod = dv.getUint16(ptr + 10, true);
+    const compSize = dv.getUint32(ptr + 20, true);
+    const nameLen = dv.getUint16(ptr + 28, true);
+    const extraLen = dv.getUint16(ptr + 30, true);
+    const commentLen = dv.getUint16(ptr + 32, true);
+    const lfhOff = dv.getUint32(ptr + 42, true);
+    const nameBytes = u8.subarray(ptr + 46, ptr + 46 + nameLen);
+    const name = new TextDecoder().decode(nameBytes);
+    ptr += 46 + nameLen + extraLen + commentLen;
+
+    const isJsonish = /\.json(\.gz)?$/i.test(name);
+    const isSchema = /schema\.json$/i.test(name);
+    if (!isJsonish || isSchema) continue;
+
+    if (dv.getUint32(lfhOff, true) !== LOC) throw new Error("ZIP: Local file header bad signature");
+    const lfNameLen = dv.getUint16(lfhOff + 26, true);
+    const lfExtraLen = dv.getUint16(lfhOff + 28, true);
+    const dataStart = lfhOff + 30 + lfNameLen + lfExtraLen;
+    const compData = u8.subarray(dataStart, dataStart + compSize);
+
+    entries.push({ name, compression: compMethod, compSize, data: compData });
+  }
+  entries.sort((a,b)=>a.name.localeCompare(b.name));
+  return entries;
+}
+async function inflateRaw(u8, onProgress) {
+  if (!supportsDecompressionStream) throw new Error("Your browser lacks DecompressionStream for deflate-raw.");
+  const ds = new DecompressionStream('deflate-raw');
+  const stream = new Blob([u8]).stream().pipeThrough(ds);
+  return await readStreamToUint8Array(stream, onProgress, u8.byteLength);
+}
+async function gunzip(u8, onProgress) {
+  if (!supportsDecompressionStream) throw new Error("Your browser lacks DecompressionStream for gzip.");
+  const ds = new DecompressionStream('gzip');
+  const stream = new Blob([u8]).stream().pipeThrough(ds);
+  return await readStreamToUint8Array(stream, onProgress, u8.byteLength);
+}
+async function readStreamToUint8Array(stream, onProgress, totalHint) {
+  const reader = stream.getReader(); const chunks = []; let received = 0;
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    chunks.push(value); received += value.byteLength;
+    if (onProgress && totalHint) onProgress(received / totalHint);
+  }
+  const out = new Uint8Array(received); let offset = 0;
+  for (const c of chunks) { out.set(c, offset); offset += c.byteLength; }
+  if (onProgress) onProgress(1);
+  return out;
+}
+
+// Download helper
+function downloadBlob(blob, filename) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+}
+
+// Demo data
+const DEMO_DATA = {
+  items: [
+    { id: "gt:circuit_electronic", displayName: "Electronic Circuit" },
+    { id: "gt:board_primitive", displayName: "Primitive Circuit Board" },
+    { id: "gt:plate_tin", displayName: "Tin Plate" },
+    { id: "minecraft:redstone", displayName: "Redstone Dust" },
+    { id: "gt:wire_copper_fine", displayName: "Fine Copper Wire" },
+    { id: "gt:ingot_copper", displayName: "Copper Ingot" },
+    { id: "gt:ingot_tin", displayName: "Tin Ingot" },
+    { id: "fluid:soldering_alloy", displayName: "soldering_alloy" }
+  ],
+  tags: {},
+  recipes: []
+};
+
+// Toast + focus
+let toastTimer = null;
+function toast(msg) {
+  let el = document.getElementById("toast");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "toast";
+    Object.assign(el.style, {
+      position:"fixed", bottom:"16px", right:"16px",
+      background:"#111a", backdropFilter:"blur(6px)",
+      border:"1px solid var(--border)", padding:"10px 12px",
+      borderRadius:"8px", zIndex:"9999", transition:"opacity .2s ease"
+    });
+    document.body.appendChild(el);
+  }
+  el.textContent = msg; el.style.opacity = "1";
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.style.opacity = "0"; }, 1800);
+}
+function focusInspectorOnKey(key) {
+  planner.selectedKey = key;
+  renderInspector();
+  document.getElementById("inspectorPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// Init
+setLeftTab(leftTab);
+updateCollapseUI();
+renderAll();
+toast("Load your RecEx ZIP or JSON via the file picker at the top.");
+</script>
+</body>
+</html>
