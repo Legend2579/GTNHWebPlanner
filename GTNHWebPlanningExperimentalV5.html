@@ -202,10 +202,12 @@
 
 <script type="module">
 /* ===========================================================
-   GTNH Recipe Planner — RecEx import + Regex export (real meta IDs)
-   Compact Regex; per-step Copy; exclude Checked Storage; escape () in names
-   Inspector details; combine duplicate inputs; tag chooser modal
-   Multiplicative resource/output display based on planned crafts
+   GTNH Recipe Planner — features:
+   - RecEx import/normalization (with circuits)
+   - Inspector details (duplicate combine, multiplicative totals)
+   - Circuit number display across UI incl. Inspector header and To‑do
+   - Circuit badge at bottom of Resource cost + in-step Mark done button
+   - Tag chooser modal; Copy‑Regex tools; Checked Storage exclusion
    =========================================================== */
 
 const supportsDecompressionStream = typeof DecompressionStream !== "undefined";
@@ -242,7 +244,7 @@ const LS_KEYS = {
 // Store
 class Store {
   constructor() {
-    this.items = new Map();     // key -> { id, meta, name, metaId? }
+    this.items = new Map();
     this.tags = new Map();
     this.recipes = new Map();
     this.byOutput = new Map();
@@ -341,7 +343,7 @@ const gatherSummary = document.getElementById("gatherSummary");
 const treeArea = document.getElementById("treeArea");
 const btnClearPlan = document.getElementById("btnClearPlan");
 
-// Layout
+// Layout controls
 function computeGridColumns() {
   const w = window.innerWidth || document.documentElement.clientWidth;
   if (w <= 980) return "1fr";
@@ -598,7 +600,7 @@ function setIngredientFocus(key) { ingredientFocusKey = (ingredientFocusKey === 
 function renderAll() { setLeftTab(leftTab); updateCollapseUI(); renderInspector(); renderPlan(); }
 function renderLeftPane() { leftTab === "catalog" ? renderCatalog() : renderFavoritesTab(); }
 
-// Catalog and Favorites list functions are unchanged from prior paste
+// Catalog/Favorites remain as earlier (omitted for brevity in explanation; fully present above)
 
 function renderCatalog() {
   const q = (searchBox.value || "").trim().toLowerCase();
@@ -657,22 +659,22 @@ function renderFavoritesTab() {
   }
 }
 
-// Inspector with combined inputs and multiplicative display
+// Inspector
 function renderInspector() {
-  const key = planner.selectedKey;
-  inspectorTitle.textContent = key ? "— " + store.getItemName(key) : "";
+  const outKey = planner.selectedKey;
+  inspectorTitle.textContent = outKey ? "— " + store.getItemName(outKey) : "";
   recipeArea.innerHTML = "";
-  if (!key) { renderTodo(); return; }
+  if (!outKey) { renderTodo(); return; }
 
-  const recipeIds = store.outputsFor(key);
-  const baseMarked = baseOverrides.has(key);
+  const recipeIds = store.outputsFor(outKey);
+  const baseMarked = baseOverrides.has(outKey);
 
   const header = document.createElement("div"); header.className = "row"; header.style.flexWrap = "wrap"; header.style.gap = "8px";
   const typeSelect = document.createElement("select"); typeSelect.style.minWidth = "200px";
   const recipeSelect = document.createElement("select"); recipeSelect.style.minWidth = "420px";
   const search = document.createElement("input"); search.type = "search"; search.placeholder = "Search recipes (inputs/machine)…"; search.style.minWidth = "260px";
 
-  const currentFav = favorites.get(key) || "";
+  const currentFav = favorites.get(outKey) || "";
   const groups = groupRecipesByType(recipeIds);
 
   function refreshTypeOptions() {
@@ -683,8 +685,9 @@ function renderInspector() {
   }
   function recipeLabelFor(id) {
     const r = store.getRecipe(id);
-    const out = r.outputs.find(o => (o.key || keyOf(o.item, o.meta || 0)) === key) || r.outputs[0];
-    return `${prettyMachine(r)} • yields ${out.count} • ${summInputs(r)}`;
+    const out = r.outputs.find(o => (o.key || keyOf(o.item, o.meta || 0)) === outKey) || r.outputs[0];
+    const circ = Array.isArray(r.circuits) && r.circuits.length ? ` • Circuit #${r.circuits.join(",")}` : "";
+    return `${prettyMachine(r)} • yields ${out.count} • ${summInputs(r)}${circ}`;
   }
   function refreshRecipeOptions() {
     recipeSelect.innerHTML = "";
@@ -703,21 +706,21 @@ function renderInspector() {
   const favBtn = document.createElement("button"); favBtn.className = "icon"; favBtn.innerHTML = "★"; favBtn.title = "Save selected recipe";
   favBtn.addEventListener("click", () => {
     const val = recipeSelect.value; if (!val) { alert("Pick a recipe first."); return; }
-    favorites.set(key, val); persistAll(); renderPlan(); renderLeftPane(); toast("Recipe saved");
+    favorites.set(outKey, val); persistAll(); renderPlan(); renderLeftPane(); toast("Recipe saved");
   });
 
   const qty = document.createElement("input"); qty.type = "number"; qty.min = "1"; qty.step = "1"; qty.value = "1"; qty.title = "Target quantity";
   const addBtn = document.createElement("button"); addBtn.className = "primary"; addBtn.textContent = "Add to plan";
   addBtn.addEventListener("click", () => {
     const qn = Math.max(1, Math.floor(Number(qty.value) || 1));
-    const found = planTargets.find(t => t.key === key);
-    if (found) found.qty += qn; else planTargets.push({ key, qty: qn });
+    const found = planTargets.find(t => t.key === outKey);
+    if (found) found.qty += qn; else planTargets.push({ key: outKey, qty: qn });
     persistAll(); renderAll(); toast("Added to plan");
   });
 
   const baseBtn = document.createElement("button"); baseBtn.className = "ghost"; baseBtn.textContent = baseMarked ? "Unmark base" : "Mark as base";
   baseBtn.title = "Treat this as a base ingredient (won’t require a recipe)";
-  baseBtn.addEventListener("click", () => { if (baseOverrides.has(key)) baseOverrides.delete(key); else baseOverrides.add(key); persistAll(); renderAll(); });
+  baseBtn.addEventListener("click", () => { if (baseOverrides.has(outKey)) baseOverrides.delete(outKey); else baseOverrides.add(outKey); persistAll(); renderAll(); });
 
   header.append(typeSelect, recipeSelect, search, favBtn, qty, addBtn, baseBtn);
   recipeArea.append(header);
@@ -736,20 +739,22 @@ function renderInspector() {
     details.innerHTML = "";
     if (!r) return;
 
-    // Determine crafts needed for the currently selected output using this recipe
-    const outForSelected = r.outputs.find(o => (o.key || keyOf(o.item, o.meta || 0)) === key) || r.outputs[0];
+    // crafts needed for this output/recipe
+    const outForSelected = r.outputs.find(o => (o.key || keyOf(o.item, o.meta || 0)) === outKey) || r.outputs[0];
     const outPerCraft = Math.max(outForSelected?.count || 1, 1);
-    const currentNodeCrafts = craftsNeededForSelected(key, selectedId, outPerCraft);
+    const currentNodeCrafts = craftsNeededForSelected(outKey, selectedId, outPerCraft);
 
+    // Header + circuit tag
     const head = document.createElement("div");
-    head.innerHTML = `<span class="tag">${groupLabelForRecipe(r)}</span> • yields <span class="mono">${fmtQty(outPerCraft)}</span> per craft`;
+    const circBadge = Array.isArray(r.circuits) && r.circuits.length ? ` • <span class="tag">Circuit #${r.circuits.join(",")}</span>` : "";
+    head.innerHTML = `<span class="tag">${groupLabelForRecipe(r)}</span> • yields <span class="mono">${fmtQty(outPerCraft)}</span> per craft${circBadge}`;
     details.appendChild(head);
 
-    // Resource cost — combine and multiply by crafts
+    // Resource cost (multiplied)
     const h1 = document.createElement("div"); h1.style.marginTop = "8px"; h1.innerHTML = "<strong>Resource cost (for this step)</strong>";
     details.appendChild(h1);
 
-    const combinedInputs = combineInputsForDisplay(r.inputs, key, r.id).map(e => ({
+    const combinedInputs = combineInputsForDisplay(r.inputs, outKey, r.id).map(e => ({
       ...e,
       qty: e.qty * currentNodeCrafts
     }));
@@ -767,6 +772,23 @@ function renderInspector() {
     }
     details.appendChild(ulCost);
 
+    // Footer under inputs: circuit + Mark done button
+    const footBar = document.createElement("div");
+    footBar.className = "row";
+    footBar.style.margin = "6px 0";
+    if (Array.isArray(r.circuits) && r.circuits.length) footBar.appendChild(tagEl(`Circuit #${r.circuits.join(",")}`));
+    // Need for this step (selected output)
+    const built = planner.build();
+    const node = built.nodes.get(outKey);
+    const needNow = Math.max(0, node?.remaining || 0);
+    const markDone = document.createElement("button");
+    markDone.className = "primary";
+    markDone.textContent = "Mark done";
+    markDone.title = `Add ${needNow} obtained for ${store.getItemName(outKey)}`;
+    markDone.addEventListener("click", () => { bumpObtained(outKey, needNow); });
+    footBar.appendChild(markDone);
+    details.appendChild(footBar);
+
     // Outputs (multiplied)
     const h2 = document.createElement("div"); h2.style.marginTop = "8px"; h2.innerHTML = "<strong>Outputs (total for this step)</strong>";
     details.appendChild(h2);
@@ -781,7 +803,7 @@ function renderInspector() {
     }
     details.appendChild(ulOut);
 
-    // Tag choosers (combined)
+    // Choose items for tags
     const tagInputs = (r.inputs || []).filter(x => !!x.tag);
     if (tagInputs.length) {
       const combinedTags = combineTagInputsForDisplay(tagInputs).map(t => ({ ...t, qty: t.qty * currentNodeCrafts }));
@@ -793,15 +815,15 @@ function renderInspector() {
         const li = document.createElement("li");
         const left = document.createElement("div"); left.className = "row";
         left.appendChild(span(`${fmtQty(t.qty)}× Tag: ${t.tag}`, ""));
-        const current = getRecipeTagChoice(key, r.id, t.tag);
+        const current = getRecipeTagChoice(outKey, r.id, t.tag);
         if (current) left.appendChild(tagEl(`using ${store.getItemName(current)}`));
         li.appendChild(left);
 
         const right = document.createElement("div"); right.className = "row";
         const choose = document.createElement("button"); choose.className = "icon"; choose.textContent = "Choose…";
-        choose.addEventListener("click", () => openTagChooserModal(t.tag, key, r.id));
+        choose.addEventListener("click", () => openTagChooserModal(t.tag, outKey, r.id));
         const clear = document.createElement("button"); clear.className = "icon"; clear.textContent = "Clear";
-        clear.addEventListener("click", () => { setRecipeTagChoice(key, r.id, t.tag, null); renderInspector(); });
+        clear.addEventListener("click", () => { setRecipeTagChoice(outKey, r.id, t.tag, null); renderInspector(); });
         right.append(choose, clear);
         li.appendChild(right);
 
@@ -812,13 +834,10 @@ function renderInspector() {
   }
 }
 
-// For inspector multiplication: how many crafts are currently required for the selected output
 function craftsNeededForSelected(outKey, recipeId, outPerCraft) {
-  // Build a quick plan view and take craftsNeeded from that node
   const built = planner.build();
   const node = built.nodes.get(outKey);
   if (node && node.recipeId === recipeId) return Math.max(1, node.craftsNeeded || 1);
-  // Fallback: compute from targets if no node (e.g., not in plan yet). Use 1 craft.
   return 1;
 }
 
@@ -940,7 +959,7 @@ function buildRegexEntry(name, idNum) {
 }
 function compactJoin(entries) { return entries.join("|"); }
 
-// Plan + To‑do (unchanged logic; includes Copy Regex buttons)
+// Plan + To‑do (unchanged core)
 function renderPlan() {
   const { nodes, edges, toGather } = planner.build();
 
@@ -1070,7 +1089,9 @@ function renderNode(key, nodes, children) {
   if (node.isBaseOverride) info.push(`<span class="tag">base</span>`);
   else if (node.needsChoice) info.push(`<span class="tag warn">needs recipe</span>`);
   else if (node.recipeId) {
-    info.push(`<span class="tag">${prettyMachine(store.getRecipe(node.recipeId))}</span>`);
+    const r = store.getRecipe(node.recipeId);
+    const circ = Array.isArray(r?.circuits) && r.circuits.length ? ` • <span class="tag">Circuit #${r.circuits.join(",")}</span>` : "";
+    info.push(`<span class="tag">${prettyMachine(r)}</span>${circ}`);
     if (node.craftsNeeded > 0) info.push(`<span class="muted">crafts: <span class="mono">${fmtQty(node.craftsNeeded)}</span> × <span class="mono">${fmtQty(node.outPerCraft)}</span></span>`);
   } else info.push(`<span class="tag">base</span>`);
   middle.innerHTML = info.join(" ");
@@ -1104,7 +1125,6 @@ function renderTodo(build) {
   const B = build || planner.build(); const { nodes, edges } = B;
   todoArea.innerHTML = "<div><strong>To‑do</strong> <span class='muted'>(base=1 → final=max; grouped by machine, then name)</span></div>";
 
-  // Toolbar: Copy Regex (all steps)
   const todoToolbar = document.createElement("div");
   todoToolbar.className = "row";
   todoToolbar.style.margin = "6px 0 8px 0";
@@ -1133,7 +1153,6 @@ function renderTodo(build) {
   const craftable = new Set(); for (const [k, n] of B.nodes.entries()) if (n.recipeId && n.craftsNeeded > 0) craftable.add(k);
   if (!craftable.size) { todoArea.appendChild(p("<span class='muted'>No crafting steps pending.</span>")); return; }
 
-  // levels
   const parentsMap = new Map(); const indeg = new Map(); for (const k of craftable) indeg.set(k, 0);
   for (const e of edges) if (craftable.has(e.parentKey) && craftable.has(e.childKey)) {
     if (!parentsMap.has(e.childKey)) parentsMap.set(e.childKey, []); parentsMap.get(e.childKey).push(e.parentKey);
@@ -1158,12 +1177,10 @@ function renderTodo(build) {
   for (const s of steps) {
     if (s.level !== currentLevel) {
       currentLevel = s.level;
-
       const hdr = document.createElement("div"); hdr.className = "level-title";
       const levelForThisHeader = currentLevel;
       const titleText = levelForThisHeader===1 ? "Step 1 (base)" : `Step ${levelForThisHeader}`;
       const leftSpan = document.createElement("span"); leftSpan.textContent = titleText;
-
       const btnStepRegex = document.createElement("button");
       btnStepRegex.className = "icon";
       btnStepRegex.textContent = "Copy Regex";
@@ -1184,7 +1201,6 @@ function renderTodo(build) {
         if (!text) { toast("Nothing to copy for this step"); return; }
         copyText(text);
       });
-
       const wrapRow = document.createElement("div");
       wrapRow.className = "row";
       wrapRow.appendChild(leftSpan);
@@ -1205,9 +1221,11 @@ function renderTodo(build) {
 
     const left = document.createElement("div"); left.className = "meta"; left.addEventListener("click", () => focusInspectorOnKey(s.key));
     const need = Math.max(0, (B.nodes.get(s.key)?.remaining) || 0);
+    const r = store.getRecipe(s.recipeId);
+    const circuitBadge = Array.isArray(r?.circuits) && r.circuits.length ? ` Circuit #${r.circuits.join(",")}` : "";
     left.appendChild(itemPill(`${fmtQty(need)}x ${s.name}`, s.key));
     left.appendChild(tagEl(s.machine));
-    if (craftsNow > 0) left.appendChild(tagEl(`craftable: ${fmtQty(craftsNow)}`));
+    if (circuitBadge) left.appendChild(tagEl(circuitBadge));
     const copyBtn = document.createElement("button"); copyBtn.className = "icon"; copyBtn.title = `Copy “${s.name}”`; copyBtn.textContent = "Copy";
     copyBtn.addEventListener("click", (ev) => { ev.stopPropagation(); copyText(s.name); });
     left.appendChild(copyBtn);
@@ -1277,7 +1295,7 @@ function obtainedControl(key) {
 }
 function obtainedNumber(key) { return Number(obtained.get(key) || 0); }
 
-// Favorite recipe chooser modal
+// Favorite selector modal
 function pickFavoriteViaDialog(outKey) {
   const recipes = store.outputsFor(outKey).map(id => ({ id, r: store.getRecipe(id) }));
   openModal(`Choose recipe for ${store.getItemName(outKey)}`, (body) => {
@@ -1285,8 +1303,9 @@ function pickFavoriteViaDialog(outKey) {
     for (const {id, r} of recipes) {
       const row = document.createElement("div"); row.className = "row space"; row.style.borderBottom = "1px dashed #21262d"; row.style.padding = "6px 4px";
       const left = document.createElement("div"); left.className = "row";
+      const circ = Array.isArray(r.circuits) && r.circuits.length ? ` • Circuit #${r.circuits.join(",")}` : "";
       left.appendChild(tagEl(prettyMachine(r)));
-      left.appendChild(span(`yields ${fmtQty((r.outputs[0]?.count)||1)} • ${summInputs(r)}`));
+      left.appendChild(span(`yields ${fmtQty((r.outputs[0]?.count)||1)} • ${summInputs(r)}${circ}`));
       const right = document.createElement("div");
       const use = document.createElement("button"); use.className = "icon"; use.textContent = "Use";
       use.addEventListener("click", () => { favorites.set(outKey, id); persistAll(); closeModal(); renderAll(); });
@@ -1312,7 +1331,7 @@ async function copyText(text) {
   }
 }
 
-/* ---------- RecEx normalizer (records metaId) ---------- */
+/* ---------- RecEx normalizer (with circuits) ---------- */
 
 const ANY_CIRCUIT_TAGS = new Map([
   ["any ulv circuit","circuitPrimitive"],
