@@ -99,6 +99,9 @@
   .favFilters button.active { box-shadow: inset 0 0 0 2px rgba(88,166,255,.22); border-color: rgba(88,166,255,.45); }
 
   #todoArea .level-title { font-weight: 600; margin-top: 8px; padding-top: 8px; border-top: 1px solid #21262d; }
+  #todoArea .level-title .levelHeader { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  #todoArea .level-title .levelToggle { width: 28px; text-align:center; }
+  #todoArea .level-title .levelToggle button { padding: 4px 8px; }
   #todoArea .step { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 8px 10px; border-bottom: 1px dashed #21262d; border-radius: 8px; }
   #todoArea .step.checked-storage { background: #0f1f16; box-shadow: inset 0 0 0 2px rgba(46,160,67,.35); }
   #todoArea .step.craftable-now { background: #132616; box-shadow: inset 0 0 0 2px rgba(46,160,67,.55); }
@@ -106,7 +109,7 @@
   #todoArea .step.ingredient-focus { outline: 2px solid var(--yellow); outline-offset: -2px; background-image: linear-gradient(0deg, rgba(210,153,34,.12), rgba(210,153,34,.12)); }
   #todoArea .meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; cursor: pointer; }
   #todoArea .right { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  #todoArea label.small { color: var(--muted); font-size: 12px; display: inline-flex; gap: 6px; align-items: center; }
+  #todoArea label.small { color: var(--muted); font-size: 12px; display: inline-flex; gap: 6px; align-items: center; user-select:none; }
   #todoArea input.owned { width: 8ch; }
 
   #gatherSummary li.gather-done { background: #132616; box-shadow: inset 0 0 0 2px rgba(46,160,67,.55); border-radius: 8px; }
@@ -179,7 +182,6 @@
   .comboItem[aria-selected="true"]{ background:#0f1f16; box-shadow: inset 0 0 0 2px rgba(46,160,67,.35); }
   .comboItem .text{
     flex:1; min-width:0;
-    /* key bits */
     white-space:normal;
     overflow-wrap:anywhere;
     word-break:break-word;
@@ -202,12 +204,10 @@
     --splitter-w: 10px;
   }
 
-  /* We'll override gridTemplateColumns in JS; this keeps initial sane defaults */
   #app{
     grid-template-columns: var(--col-left) 1fr var(--col-right);
   }
 
-  /* Need position:relative for splitter placement */
   .panel .head{
     position: relative;
   }
@@ -221,7 +221,6 @@
     background: transparent;
   }
 
-  /* Put splitter at the left edge of the panel it sits in (over the column boundary) */
   .splitter.at-left-edge{
     left: calc(-1 * (var(--splitter-w) / 2));
   }
@@ -232,6 +231,24 @@
   body.resizing-cols{
     cursor: col-resize !important;
     user-select: none !important;
+  }
+
+  /* =========================
+     Remaining-to-gather filters
+     ========================= */
+  .gatherFilters{
+    display:flex;
+    gap:12px;
+    flex-wrap:wrap;
+    margin-top:6px;
+  }
+  .gatherFilters label{
+    color: var(--muted);
+    font-size: 12px;
+    display:inline-flex;
+    gap:6px;
+    align-items:center;
+    user-select:none;
   }
 </style>
 </head>
@@ -288,7 +305,6 @@
           <button id="btnClearIdeal" class="ghost" title="Clear IDEAL favorites only.">Clear ideal</button>
         </div>
 
-        <!-- NEW: Favorites filters -->
         <div class="favFilters" id="favFilters">
           <button id="btnFavFilterAll" class="ghost">All</button>
           <button id="btnFavFilterGreen" class="ghost">Green (MATCH)</button>
@@ -310,7 +326,6 @@
       <strong>Inspector</strong>
       <span id="inspectorTitle" class="muted"></span>
       <div class="spacer"></div>
-      <!-- Drag here (blank space in Inspector header) to resize Catalog -->
       <div id="splitLeft" class="splitter at-left-edge" title="Drag to resize Catalog"></div>
       <button id="btnClearSelection" class="ghost">Clear</button>
     </div>
@@ -325,9 +340,11 @@
   <section class="panel" id="planPanel">
     <div class="head">
       <strong>Plan</strong>
-      <!-- Drag here (blank space in Plan header) to resize Plan -->
       <div id="splitRight" class="splitter at-left-edge" title="Drag to resize Plan"></div>
       <div class="spacer"></div>
+
+      <button id="btnHiddenItems" class="ghost">Hidden Items (0)</button>
+
       <button id="btnExportState" class="ghost">Export state</button>
       <input type="file" id="stateImport" accept="application/json" style="display:none" />
       <button id="btnImportState" class="ghost">Import state</button>
@@ -344,7 +361,7 @@
       <div><strong>Notes</strong></div>
       <ul>
         <li>ACTIVE favorites affect planning. IDEAL favorites are bookmarks only.</li>
-        <li>Owned amounts reset on refresh and when you Clear plan.</li>
+        <li>Owned/Checked/Hidden reset on refresh unless you enable “Persist Owned/Checked & hidden” in the To‑do toolbar.</li>
         <li>Programmed Circuits are hidden from “Remaining to gather.”</li>
         <li>To‑do is leveled (base=1 → final=max; grouped by machine, then name).</li>
       </ul>
@@ -365,14 +382,6 @@
 </div>
 
 <script type="module">
-/* ===========================================================
-   MERGE: "Wrap long recipe lines" (custom combobox) into full
-   feature version you provided.
-   - Replaces the native recipeSelect <select> in Inspector.
-   - Keeps typeSelect native.
-   - Keeps all other features intact.
-   =========================================================== */
-
 const supportsDecompressionStream = typeof DecompressionStream !== "undefined";
 
 // Progress
@@ -389,12 +398,14 @@ const ceilDiv = (a, b) => Math.ceil(a / b);
 const fmtQty = (n) => (Number.isFinite(n) ? (Math.abs(n) >= 10000 ? n.toLocaleString() : n.toString()) : "0");
 function hashCode(str) { let h = 0; for (let i = 0; i < str.length; i++) { h = Math.imul(31, h) + str.charCodeAt(i) | 0; } return h; }
 function stableHashHex(str){ const h = hashCode(str) >>> 0; return ("00000000" + h.toString(16)).slice(-8); }
+function isFluidKey(key){ return String(key || "").startsWith("fluid:"); }
+function stepForKey(key){ return isFluidKey(key) ? 1000 : 1; }
 
 // LocalStorage
 const LS = { get(k, f){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : f; }catch{ return f; }}, set(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch{} } };
 const LS_KEYS = {
-  favorites: "gtnh_favorites",              // ACTIVE
-  favoritesIdeal: "gtnh_favorites_ideal",   // IDEAL
+  favorites: "gtnh_favorites",
+  favoritesIdeal: "gtnh_favorites_ideal",
   tagPrefs: "gtnh_tag_prefs",
   recipeTagPrefs: "gtnh_tag_prefs_by_recipe",
   plan: "gtnh_plan_targets",
@@ -404,7 +415,21 @@ const LS_KEYS = {
   collapsedCatalog: "gtnh_collapsed_catalog",
   collapsedPlan: "gtnh_collapsed_plan",
   colSizes: "gtnh_col_sizes",
-  favFilter: "gtnh_fav_filter"
+  favFilter: "gtnh_fav_filter",
+
+  // To-do
+  todoReverse: "gtnh_todo_reverse",
+
+  // NEW: To-do UX filters + collapse state
+  todoFilterCraftable: "gtnh_todo_filter_craftable_now",
+  todoFilterHideChecked: "gtnh_todo_filter_hide_checked",
+  todoCollapsedLevels: "gtnh_todo_collapsed_levels",
+
+  // NEW: Persist session (Owned/Checked/Hidden)
+  sessionPersist: "gtnh_session_persist_enabled",
+  obtained: "gtnh_obtained_map",
+  checkedStorage: "gtnh_checked_storage_set",
+  gatherHiddenKeys: "gtnh_gather_hidden_keys_set"
 };
 
 // Store
@@ -455,8 +480,8 @@ class Store {
 const store = new Store();
 
 // State
-const favorites = new Map(Object.entries(LS.get(LS_KEYS.favorites, {})));                 // ACTIVE (used for planner)
-const favoritesIdeal = new Map(Object.entries(LS.get(LS_KEYS.favoritesIdeal, {})));      // IDEAL (bookmark only)
+const favorites = new Map(Object.entries(LS.get(LS_KEYS.favorites, {})));
+const favoritesIdeal = new Map(Object.entries(LS.get(LS_KEYS.favoritesIdeal, {})));
 
 const legacyTagPrefs = new Map(Object.entries(LS.get(LS_KEYS.tagPrefs, {})));
 const recipeTagPrefs = new Map(Object.entries(LS.get(LS_KEYS.recipeTagPrefs, {})).map(([fk, obj]) => [fk, new Map(Object.entries(obj))]));
@@ -467,14 +492,34 @@ let leftTab = LS.get(LS_KEYS.leftTab, "catalog");
 let collapsedCatalog = !!LS.get(LS_KEYS.collapsedCatalog, false);
 let collapsedPlan = !!LS.get(LS_KEYS.collapsedPlan, false);
 
-// NEW: Favorites filter state (persisted)
-let favoritesFilter = LS.get(LS_KEYS.favFilter, "all"); // "all" | "match" | "blue" | "missing"
+let favoritesFilter = LS.get(LS_KEYS.favFilter, "all");
 
-// Session
+// To-do state
+let todoReverse = !!LS.get(LS_KEYS.todoReverse, false);
+
+// NEW: To-do filters
+let todoFilterCraftableNow = !!LS.get(LS_KEYS.todoFilterCraftable, false);
+let todoFilterHideChecked = !!LS.get(LS_KEYS.todoFilterHideChecked, false);
+
+// NEW: collapsible step levels (store collapsed levels)
+let todoCollapsedLevels = new Set((LS.get(LS_KEYS.todoCollapsedLevels, []) || []).map(x => Number(x)).filter(n => Number.isFinite(n)));
+
+// NEW: persist session toggle
+let sessionPersistEnabled = !!LS.get(LS_KEYS.sessionPersist, false);
+
+// Session (may be persisted depending on toggle)
 let obtained = new Map();
 let checkedStorage = new Set();
+let gatherHiddenKeys = new Set();
+
 let gatherMarked = new Set();
 let ingredientFocusKey = null;
+
+// Plan "Remaining to gather" hiding filters (still session-only)
+let gatherHideFilters = { hideMolds: false, hideExtruderShapes: false };
+
+// Load session from storage if enabled
+hydrateSessionFromStorage();
 
 // DOM refs
 const fileInput = document.getElementById("fileInput");
@@ -509,7 +554,7 @@ const btnClearIdeal = document.getElementById("btnClearIdeal");
 const favSearchOutput = document.getElementById("favSearchOutput");
 const favSearchIngredient = document.getElementById("favSearchIngredient");
 
-// NEW: filter buttons
+// Favorites filter buttons
 const btnFavFilterAll = document.getElementById("btnFavFilterAll");
 const btnFavFilterGreen = document.getElementById("btnFavFilterGreen");
 const btnFavFilterBlue = document.getElementById("btnFavFilterBlue");
@@ -525,14 +570,16 @@ const gatherSummary = document.getElementById("gatherSummary");
 const treeArea = document.getElementById("treeArea");
 const btnClearPlan = document.getElementById("btnClearPlan");
 
+const btnHiddenItems = document.getElementById("btnHiddenItems");
+
 // ===== Helpers for ACTIVE/IDEAL/MATCH/MISSING =====
 function favPairFor(outKey) {
   const activeId = favorites.get(outKey) || null;
   const idealId = favoritesIdeal.get(outKey) || null;
   const match = !!(activeId && idealId && activeId === idealId);
-  const missing = (!!activeId) !== (!!idealId);     // exactly one set
+  const missing = (!!activeId) !== (!!idealId);
   const bothSet = !!(activeId && idealId);
-  const blue = bothSet && !match;                    // both set and different
+  const blue = bothSet && !match;
   return { activeId, idealId, match, missing, blue, bothSet };
 }
 function applyStarBtnClass(btn, mode, match) {
@@ -547,16 +594,61 @@ function applySelectHighlight(selectEl, cls) {
   else if (cls === "ideal") selectEl.classList.add("ideal-selected");
   else if (cls === "active") selectEl.classList.add("active-selected");
 }
-/**
- * Machine tag coloring:
- * - missing => red
- * - match   => green
- * - else    => blue (default "active" tag color)
- */
 function machineTagClassForOutKey(outKey) {
   const p = favPairFor(outKey);
   if (p.missing) return "missing";
   return p.match ? "match" : "active";
+}
+
+// ===== Session persistence helpers (Owned / Checked / Hidden) =====
+function hydrateSessionFromStorage() {
+  if (!sessionPersistEnabled) {
+    obtained = new Map();
+    checkedStorage = new Set();
+    gatherHiddenKeys = new Set();
+    return;
+  }
+  const rawObt = LS.get(LS_KEYS.obtained, {});
+  const rawChk = LS.get(LS_KEYS.checkedStorage, []);
+  const rawHide = LS.get(LS_KEYS.gatherHiddenKeys, []);
+
+  obtained = new Map(Object.entries(rawObt || {}).map(([k,v]) => [k, Math.max(0, Math.floor(Number(v)||0))]));
+  checkedStorage = new Set(Array.isArray(rawChk) ? rawChk : []);
+  gatherHiddenKeys = new Set(Array.isArray(rawHide) ? rawHide : []);
+}
+function persistSessionNow() {
+  if (!sessionPersistEnabled) return;
+  const obj = {};
+  for (const [k, v] of obtained.entries()) obj[k] = Math.max(0, Math.floor(Number(v)||0));
+  LS.set(LS_KEYS.obtained, obj);
+  LS.set(LS_KEYS.checkedStorage, Array.from(checkedStorage));
+  LS.set(LS_KEYS.gatherHiddenKeys, Array.from(gatherHiddenKeys));
+}
+function setSessionPersistEnabled(next) {
+  sessionPersistEnabled = !!next;
+  LS.set(LS_KEYS.sessionPersist, sessionPersistEnabled);
+  if (sessionPersistEnabled) persistSessionNow();
+  toast(sessionPersistEnabled ? "Persistence enabled (Owned/Checked/Hidden)" : "Persistence disabled (will reset on refresh)");
+}
+function setObtainedValue(key, val) {
+  obtained.set(key, Math.max(0, Math.floor(Number(val)||0)));
+  persistSessionNow();
+}
+function bumpObtainedValue(key, delta) {
+  const cur = obtainedNumber(key);
+  const next = cur + Math.max(0, Math.floor(delta || 0));
+  setObtainedValue(key, next);
+}
+function setCheckedStorageFlag(key, checked) {
+  if (checked) checkedStorage.add(key);
+  else checkedStorage.delete(key);
+  persistSessionNow();
+}
+function setGatherHiddenFlag(key, hidden) {
+  if (hidden) gatherHiddenKeys.add(key);
+  else gatherHiddenKeys.delete(key);
+  persistSessionNow();
+  updateHiddenItemsButton();
 }
 
 // Favorites filter UI
@@ -582,7 +674,6 @@ btnFavFilterAll?.addEventListener("click", () => setFavoritesFilter("all"));
 btnFavFilterGreen?.addEventListener("click", () => setFavoritesFilter("match"));
 btnFavFilterBlue?.addEventListener("click", () => setFavoritesFilter("blue"));
 btnFavFilterMissing?.addEventListener("click", () => setFavoritesFilter("missing"));
-// =========================================
 
 // Layout controls
 function computeGridColumns() {
@@ -605,9 +696,7 @@ function updateCollapseUI() {
   LS.set(LS_KEYS.collapsedPlan, collapsedPlan);
 }
 
-/* =========================
-   Resizable columns
-   ========================= */
+/* Resizable columns */
 const DEFAULT_COLS = { left: 320, right: 400 };
 const MIN_LEFT = 220;
 const MIN_RIGHT = 260;
@@ -627,7 +716,6 @@ function applyColumnSizes() {
     return;
   }
 
-  // If either side is hidden, defer to existing logic
   if (collapsedCatalog || collapsedPlan) {
     app.style.gridTemplateColumns = computeGridColumns();
     return;
@@ -652,12 +740,9 @@ function startDrag(which, startX) {
     if (!Number.isFinite(x)) return;
     const dx = x - startX;
 
-    if (which === "left") {
-      colSizes.left = start.left + dx;
-    } else if (which === "right") {
-      // Splitter is at the LEFT EDGE of Plan; moving mouse right makes Plan narrower.
-      colSizes.right = start.right - dx;
-    }
+    if (which === "left") colSizes.left = start.left + dx;
+    else if (which === "right") colSizes.right = start.right - dx;
+
     applyColumnSizes();
   }
 
@@ -678,7 +763,6 @@ function startDrag(which, startX) {
   window.addEventListener("touchend", onUp);
 }
 
-// Connect splitters
 const splitLeft = document.getElementById("splitLeft");
 const splitRight = document.getElementById("splitRight");
 
@@ -692,15 +776,12 @@ splitRight?.addEventListener("mousedown", (e) => {
   e.preventDefault();
   startDrag("right", e.clientX);
 });
-
-// Touch support
 splitLeft?.addEventListener("touchstart", (e) => {
   if (collapsedCatalog || collapsedPlan) return;
   const x = e.touches?.[0]?.clientX;
   if (!Number.isFinite(x)) return;
   startDrag("left", x);
 }, { passive: true });
-
 splitRight?.addEventListener("touchstart", (e) => {
   if (collapsedCatalog || collapsedPlan) return;
   const x = e.touches?.[0]?.clientX;
@@ -708,13 +789,9 @@ splitRight?.addEventListener("touchstart", (e) => {
   startDrag("right", x);
 }, { passive: true });
 
-// Ensure column sizing wins over the old resize handler
 window.addEventListener("resize", applyColumnSizes);
-
-/* =========================
-   Existing resize & toggle hookup
-   ========================= */
 window.addEventListener("resize", () => { document.getElementById("app").style.gridTemplateColumns = computeGridColumns(); });
+
 btnToggleCatalog.addEventListener("click", () => { collapsedCatalog = !collapsedCatalog; updateCollapseUI(); applyColumnSizes(); });
 btnTogglePlan.addEventListener("click", () => { collapsedPlan = !collapsedPlan; updateCollapseUI(); applyColumnSizes(); });
 
@@ -775,11 +852,23 @@ btnClearIdeal.addEventListener("click", () => {
 });
 
 btnClearSelection.addEventListener("click", () => { planner.selectedKey = null; renderInspector(); });
+
 btnClearPlan.addEventListener("click", () => {
-  if (!planTargets.length && obtained.size === 0 && checkedStorage.size === 0 && gatherMarked.size === 0) return;
-  if (!confirm("Clear the entire plan and in-session Owned amounts, Checked Storage flags, and Remaining-to-gather marks?")) return;
-  planTargets = []; obtained.clear(); checkedStorage.clear(); gatherMarked.clear(); ingredientFocusKey = null;
-  persistAll(); renderAll();
+  if (!planTargets.length && obtained.size === 0 && checkedStorage.size === 0 && gatherMarked.size === 0 && gatherHiddenKeys.size === 0) return;
+  if (!confirm("Clear the entire plan and Owned/Checked/Hidden state?")) return;
+
+  planTargets = [];
+  obtained.clear();
+  checkedStorage.clear();
+  gatherMarked.clear();
+  ingredientFocusKey = null;
+
+  gatherHiddenKeys.clear();
+  gatherHideFilters.hideMolds = false;
+  gatherHideFilters.hideExtruderShapes = false;
+
+  persistAll();
+  renderAll();
 });
 
 searchBox.addEventListener("input", () => renderCatalog());
@@ -793,7 +882,7 @@ fileInput.addEventListener("change", async (e) => {
   finally { hideProgress(); }
 });
 
-// Persistence
+// Persistence (non-session + session toggle + todo UI state)
 function persistAll() {
   LS.set(LS_KEYS.favorites, Object.fromEntries(favorites));
   LS.set(LS_KEYS.favoritesIdeal, Object.fromEntries(favoritesIdeal));
@@ -808,11 +897,19 @@ function persistAll() {
   LS.set(LS_KEYS.collapsedPlan, collapsedPlan);
   LS.set(LS_KEYS.colSizes, colSizes);
   LS.set(LS_KEYS.favFilter, favoritesFilter);
+
+  // To-do
+  LS.set(LS_KEYS.todoReverse, todoReverse);
+  LS.set(LS_KEYS.todoFilterCraftable, todoFilterCraftableNow);
+  LS.set(LS_KEYS.todoFilterHideChecked, todoFilterHideChecked);
+  LS.set(LS_KEYS.todoCollapsedLevels, Array.from(todoCollapsedLevels));
+
+  // Session toggle + session data (if enabled)
+  LS.set(LS_KEYS.sessionPersist, sessionPersistEnabled);
+  persistSessionNow();
 }
 
-/* =====================================================
-   Tag prefs (unchanged)
-   ===================================================== */
+/* Tag prefs */
 const favKeyFor = (outKey, recipeId) => `${outKey}||${recipeId}`;
 function getRecipeTagChoice(outKey, recipeId, tagName) {
   const fk = favKeyFor(outKey, recipeId);
@@ -831,9 +928,7 @@ function setRecipeTagChoice(outKey, recipeId, tagName, itemKey) {
   persistAll();
 }
 
-// =====================================================
-// Custom wrapping recipe dropdown (combobox)
-// =====================================================
+// Combo box
 function escapeHtml(s){
   return String(s)
     .replaceAll("&","&amp;")
@@ -842,7 +937,6 @@ function escapeHtml(s){
     .replaceAll('"',"&quot;")
     .replaceAll("'","&#039;");
 }
-
 function createRecipeComboBox({ placeholder="— Select a recipe —" } = {}){
   const root = document.createElement("div");
   root.className = "combo";
@@ -865,7 +959,7 @@ function createRecipeComboBox({ placeholder="— Select a recipe —" } = {}){
   hint.innerHTML = `Tip: <span class="kbd">↑</span>/<span class="kbd">↓</span> then <span class="kbd">Enter</span>. Long lines wrap in this list.`;
   root.appendChild(hint);
 
-  let items = []; // [{value,label,meta:{badgeText,badgeClass}}]
+  let items = [];
   let value = "";
   let open = false;
   let activeIndex = -1;
@@ -977,7 +1071,6 @@ function createRecipeComboBox({ placeholder="— Select a recipe —" } = {}){
   render();
   return root;
 }
-// =====================================================
 
 // Planner
 class Planner {
@@ -1003,7 +1096,9 @@ class Planner {
       node.needsChoice = node.hasOptions && !recipeId && !node.isBaseOverride;
       node.recipeId = node.isBaseOverride ? null : recipeId;
 
-      const have = obtainedNumber(key);
+      // CHANGE #1: hidden items count as "done" for planning math
+      const have = planningHave(key, node.requested);
+
       let outPerCraft = 1;
       if (node.recipeId) {
         const rec = store.getRecipe(node.recipeId);
@@ -1046,7 +1141,8 @@ class Planner {
     for (const t of planTargets) demand(t.key, t.qty, null, null, new Set());
 
     for (const node of nodes.values()) {
-      node.have = obtainedNumber(node.key);
+      // CHANGE #1: hidden items count as "done" for planning math
+      node.have = planningHave(node.key, node.requested);
       node.remaining = Math.max(node.requested - node.have, 0);
       node.isBase = (!store.outputsFor(node.key).length && !node.key.startsWith("tag:")) || node.isBaseOverride;
     }
@@ -1083,24 +1179,40 @@ const planner = new Planner(store);
 
 function igCount(ing){ return Math.max(1, ing.count ?? 1); }
 
+/**
+ * CHANGE #2: craftability must count "needs recipe" correctly and respect hidden-as-done.
+ * - uses planningHave()
+ * - unresolved tag blocks unless the unresolved tag entry is hidden
+ */
 function craftsPossibleFor(outKey, recipeId) {
   const r = store.getRecipe(recipeId);
   if (!r) return 0;
   if (!r.inputs || r.inputs.length === 0) return Infinity;
+
   let possible = Infinity;
+
   for (const ing of r.inputs) {
     const needPer = igCount(ing);
+
     if (ing.tag) {
+      const tagKey = `tag:${ing.tag}`;
       const choice = getRecipeTagChoice(outKey, recipeId, ing.tag);
-      if (!choice) return 0;
-      const have = obtainedNumber(choice);
+
+      if (!choice) {
+        // If user hid the unresolved tag entry, don't let it block craftability
+        if (gatherHiddenKeys.has(tagKey)) continue;
+        return 0;
+      }
+
+      const have = planningHave(choice, needPer);
       possible = Math.min(possible, Math.floor(have / needPer));
     } else {
       const k = ing.key || keyOf(ing.item, ing.meta || 0);
-      const have = obtainedNumber(k);
+      const have = planningHave(k, needPer);
       possible = Math.min(possible, Math.floor(have / needPer));
     }
   }
+
   return Number.isFinite(possible) ? possible : 0;
 }
 
@@ -1120,6 +1232,26 @@ function recipeUsesKey(r, outKeyCtx, targetKey) {
   return false;
 }
 function setIngredientFocus(key) { ingredientFocusKey = (ingredientFocusKey === key ? null : key); renderTodo(); }
+
+// Remaining-to-gather hiding helpers
+function isMoldName(name){ return /^mold\b/i.test(String(name || "").trim()); }
+function isExtruderShapeName(name){ return /^extruder\s*shape\b/i.test(String(name || "").trim()); }
+function isHiddenByGatherFilters(g){
+  const name = g?.name || store.getItemName(g?.key || "");
+  if (gatherHideFilters.hideMolds && isMoldName(name)) return true;
+  if (gatherHideFilters.hideExtruderShapes && isExtruderShapeName(name)) return true;
+  return false;
+}
+function isHiddenInGatherList(g){
+  if (isHiddenByGatherFilters(g)) return true; // filters always win
+  return gatherHiddenKeys.has(g.key);
+}
+function updateHiddenItemsButton(){
+  if (!btnHiddenItems) return;
+  const n = gatherHiddenKeys.size || 0;
+  btnHiddenItems.textContent = `Hidden Items (${n})`;
+  btnHiddenItems.disabled = (n === 0);
+}
 
 // Rendering
 function renderAll() {
@@ -1188,7 +1320,6 @@ function recipeUsesIngredientText(outKey, recId, needleLower) {
   if (Array.isArray(r.circuits) && r.circuits.length) for (const n of r.circuits) names.push(`Programmed Circuit #${n}`);
   return names.some(n => n.toLowerCase().includes(needleLower));
 }
-
 function renderFavoritesTab() {
   favoritesList.innerHTML = "";
   updateFavFilterButtons();
@@ -1205,7 +1336,6 @@ function renderFavoritesTab() {
     const validIdeal = row.idealId && store.outputsFor(row.outKey).includes(row.idealId);
     if (!validActive && !validIdeal) return false;
 
-    // Filter buttons
     if (favoritesFilter === "match" && !row.match) return false;
     if (favoritesFilter === "blue" && !row.blue) return false;
     if (favoritesFilter === "missing" && !row.missing) return false;
@@ -1282,7 +1412,6 @@ function renderInspector() {
   const header = document.createElement("div"); header.className = "row"; header.style.flexWrap = "wrap"; header.style.gap = "8px";
   const typeSelect = document.createElement("select"); typeSelect.style.minWidth = "200px";
 
-  // MERGED: replace native recipeSelect with wrapping combo
   const recipeCombo = createRecipeComboBox({ placeholder: "— Select a recipe —" });
   const comboApi = recipeCombo._combo;
 
@@ -1370,7 +1499,6 @@ function renderInspector() {
 
     comboApi.setItems(items);
 
-    // default selection: IDEAL then ACTIVE (if present in this type group)
     if (currentIdeal && ids.includes(currentIdeal)) comboApi.setValue(currentIdeal);
     else if (currentFav && ids.includes(currentFav)) comboApi.setValue(currentFav);
     else comboApi.setValue("");
@@ -1570,7 +1698,7 @@ function renderInspector() {
   }
 }
 
-function craftsNeededForSelected(outKey, recipeId, outPerCraft) {
+function craftsNeededForSelected(outKey, recipeId) {
   const built = planner.build();
   const node = built.nodes.get(outKey);
   if (node && node.recipeId === recipeId) return Math.max(1, node.craftsNeeded || 1);
@@ -1669,11 +1797,81 @@ function openTagChooserModal(tagName, outKeyCtx, recipeId) {
   });
 }
 
+// Hidden Items modal
+function openHiddenItemsModal(){
+  const keys = Array.from(gatherHiddenKeys);
+  keys.sort((a,b) => store.getItemName(a).localeCompare(store.getItemName(b)));
+
+  openModal("Hidden Items (Remaining to gather)", (body) => {
+    if (!keys.length) {
+      body.appendChild(p("<span class='muted'>No manually hidden items.</span>"));
+      return;
+    }
+
+    const hint = document.createElement("div");
+    hint.className = "muted";
+    hint.style.fontSize = "12px";
+    hint.textContent = "These are items you manually hid from “Remaining to gather”. Checkbox filters (Hide molds / Hide extruder shapes) are not listed here and always win.";
+    body.appendChild(hint);
+
+    const ul = document.createElement("ul");
+    ul.className = "list";
+    ul.style.marginTop = "6px";
+
+    for (const k of keys) {
+      const li = document.createElement("li");
+      const left = document.createElement("div");
+      left.className = "row";
+      left.appendChild(itemPill(store.getItemName(k), k));
+
+      const right = document.createElement("div");
+      right.className = "row";
+      const unhide = document.createElement("button");
+      unhide.className = "icon";
+      unhide.textContent = "Unhide";
+      unhide.addEventListener("click", () => {
+        setGatherHiddenFlag(k, false);
+        closeModal();
+        renderPlan();
+        openHiddenItemsModal();
+      });
+      right.appendChild(unhide);
+
+      li.append(left, right);
+      ul.appendChild(li);
+    }
+    body.appendChild(ul);
+  }, (foot) => {
+    const unhideAll = document.createElement("button");
+    unhideAll.className = "ghost";
+    unhideAll.textContent = "Unhide all";
+    unhideAll.disabled = gatherHiddenKeys.size === 0;
+    unhideAll.addEventListener("click", () => {
+      gatherHiddenKeys.clear();
+      persistSessionNow();
+      updateHiddenItemsButton();
+      closeModal();
+      renderPlan();
+    });
+
+    const close = document.createElement("button");
+    close.className = "icon";
+    close.textContent = "Close";
+    close.addEventListener("click", closeModal);
+
+    foot.append(unhideAll, close);
+  });
+}
+btnHiddenItems?.addEventListener("click", () => {
+  if (!gatherHiddenKeys.size) return;
+  openHiddenItemsModal();
+});
+
 // Grouping helpers
 function groupLabelForRecipe(r) { return r.type === "gregtech" ? (r.machine || "gregtech") : (r.type || "crafting"); }
 function groupRecipesByType(recipeIds) { const groups = {}; for (const id of recipeIds) { const r = store.getRecipe(id); const label = groupLabelForRecipe(r); if (!groups[label]) groups[label] = []; groups[label].push(id); } return groups; }
 function prettyMachine(r) { const t = (r.machine || r.type || "crafting").toString(); return t.includes(":") ? t.split(":")[1] : t; }
-function summInputs(r) { return r.inputs.map(ingredientLabel).join(" + "); }
+function summInputs(r) { return (r.inputs || []).map(ingredientLabel).join(" + "); }
 function ingredientLabel(ing) {
   const qty = igCount(ing);
   if (ing.tag) return `${qty}× <em>${ing.tag}</em>`;
@@ -1696,6 +1894,8 @@ function compactJoin(entries) { return entries.join("|"); }
 
 // Plan + To‑do
 function renderPlan() {
+  updateHiddenItemsButton();
+
   const { nodes, edges, toGather } = planner.build();
 
   targetsArea.innerHTML = "<div><strong>Targets</strong></div>";
@@ -1713,16 +1913,19 @@ function renderPlan() {
     }
   }
 
+  const visibleGather = (toGather || []).filter(g => !isHiddenInGatherList(g));
+
   {
     const head = document.createElement("div");
     head.innerHTML = `<strong>Remaining to gather</strong> <span class="muted">(base items, unresolved tags, or items that need a recipe)</span>`;
+
     const btn = document.createElement("button");
     btn.className = "icon";
     btn.textContent = "Copy Regex";
     btn.style.marginLeft = "8px";
-    btn.title = "Copy a compact Regex list of everything in Remaining to gather";
+    btn.title = "Copy a compact Regex list of everything visible in Remaining to gather";
     btn.addEventListener("click", () => {
-      const list = (toGather || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+      const list = (visibleGather || []).slice().sort((a, b) => a.name.localeCompare(b.name));
       const parts = [];
       for (const g of list) {
         if (g.key.startsWith("tag:") || g.key.startsWith("fluid:")) continue;
@@ -1734,19 +1937,48 @@ function renderPlan() {
       if (!text) { toast("Nothing to copy"); return; }
       copyText(text);
     });
-    const wrap = document.createElement("div");
-    wrap.className = "row";
-    wrap.style.alignItems = "center";
-    wrap.appendChild(head);
-    wrap.appendChild(btn);
+
+    const wrapTop = document.createElement("div");
+    wrapTop.className = "row";
+    wrapTop.style.alignItems = "center";
+    wrapTop.appendChild(head);
+    wrapTop.appendChild(btn);
+
+    const filtersRow = document.createElement("div");
+    filtersRow.className = "gatherFilters";
+
+    const chkMoldsLbl = document.createElement("label");
+    const chkMolds = document.createElement("input");
+    chkMolds.type = "checkbox";
+    chkMolds.checked = !!gatherHideFilters.hideMolds;
+    chkMolds.addEventListener("change", () => {
+      gatherHideFilters.hideMolds = chkMolds.checked;
+      renderPlan();
+    });
+    chkMoldsLbl.append(chkMolds, document.createTextNode("Hide molds"));
+
+    const chkExtrLbl = document.createElement("label");
+    const chkExtr = document.createElement("input");
+    chkExtr.type = "checkbox";
+    chkExtr.checked = !!gatherHideFilters.hideExtruderShapes;
+    chkExtr.addEventListener("change", () => {
+      gatherHideFilters.hideExtruderShapes = chkExtr.checked;
+      renderPlan();
+    });
+    chkExtrLbl.append(chkExtr, document.createTextNode("Hide extruder shapes"));
+
+    filtersRow.append(chkMoldsLbl, chkExtrLbl);
+
     gatherSummary.innerHTML = "";
-    gatherSummary.appendChild(wrap);
+    gatherSummary.appendChild(wrapTop);
+    gatherSummary.appendChild(filtersRow);
   }
 
-  if (!toGather.length) { gatherSummary.appendChild(p("<span class='accent'>Nothing left to gather.</span>")); }
-  else {
+  if (!visibleGather.length) {
+    gatherSummary.appendChild(p("<span class='accent'>Nothing left to gather.</span>"));
+  } else {
     const ul = document.createElement("ul"); ul.className = "list";
-    for (const g of toGather) {
+    for (const g of visibleGather) {
       const li = document.createElement("li");
       if (gatherMarked.has(g.key)) li.classList.add("gather-done");
 
@@ -1781,9 +2013,40 @@ function renderPlan() {
         right.appendChild(obtainedControl(g.key));
       }
 
-      const markBtn = document.createElement("button"); markBtn.className = "icon"; markBtn.textContent = gatherMarked.has(g.key) ? "Unmark" : "Mark done";
-      markBtn.addEventListener("click", () => { if (gatherMarked.has(g.key)) gatherMarked.delete(g.key); else gatherMarked.add(g.key); renderPlan(); });
+      // CHANGE #2: "needs recipe" entries should be able to affect obtained.
+      // Only exclude unresolved tag keys from auto-obtained behavior.
+      const markBtn = document.createElement("button");
+      markBtn.className = "icon";
+
+      const canAffectObtained = !g.key.startsWith("tag:");
+
+      if (canAffectObtained) {
+        markBtn.textContent = "Mark done";
+        markBtn.title = "Mark as obtained (sets Owned to satisfy this requirement)";
+        markBtn.addEventListener("click", () => {
+          // g.qty is remaining needed; adding it satisfies this ingredient for the plan
+          bumpObtained(g.key, g.qty);
+        });
+      } else {
+        markBtn.textContent = gatherMarked.has(g.key) ? "Unmark" : "Mark done";
+        markBtn.addEventListener("click", () => {
+          if (gatherMarked.has(g.key)) gatherMarked.delete(g.key);
+          else gatherMarked.add(g.key);
+          renderPlan();
+        });
+      }
       right.appendChild(markBtn);
+
+      const hideBtn = document.createElement("button");
+      hideBtn.className = "icon";
+      hideBtn.textContent = "Hide item";
+      hideBtn.title = "Hide this item from Remaining to gather and from its Regex search output";
+      hideBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        setGatherHiddenFlag(g.key, true);
+        renderPlan();
+      });
+      right.appendChild(hideBtn);
 
       li.append(left, right); ul.appendChild(li);
     }
@@ -1853,74 +2116,274 @@ function renderNode(key, nodes, children) {
   return li;
 }
 
+/* =========================
+   To-do (collapsible steps + filters + persistence toggle)
+   ========================= */
 function renderTodo(build) {
-  const B = build || planner.build(); const { nodes, edges } = B;
+  const B = build || planner.build(); const { edges } = B;
   todoArea.innerHTML = "<div><strong>To‑do</strong> <span class='muted'>(base=1 → final=max; grouped by machine, then name)</span></div>";
 
   const todoToolbar = document.createElement("div");
   todoToolbar.className = "row";
   todoToolbar.style.margin = "6px 0 8px 0";
+  todoToolbar.style.flexWrap = "wrap";
+
+  // Order toggle
+  const btnTodoOrder = document.createElement("button");
+  btnTodoOrder.className = "ghost";
+  btnTodoOrder.title = "Toggle step order (forward vs reverse)";
+  btnTodoOrder.textContent = todoReverse ? "Order: max → 1" : "Order: 1 → max";
+  btnTodoOrder.addEventListener("click", () => {
+    todoReverse = !todoReverse;
+    persistAll();
+    renderTodo(build || planner.build());
+  });
+
+  // Filters
+  const lblCraftable = document.createElement("label");
+  lblCraftable.className = "small";
+  const chkCraftable = document.createElement("input");
+  chkCraftable.type = "checkbox";
+  chkCraftable.checked = todoFilterCraftableNow;
+  chkCraftable.addEventListener("change", () => {
+    todoFilterCraftableNow = chkCraftable.checked;
+    persistAll();
+    renderTodo(build || planner.build());
+  });
+  lblCraftable.append(chkCraftable, document.createTextNode("Show only craftable now"));
+
+  const lblHideChecked = document.createElement("label");
+  lblHideChecked.className = "small";
+  const chkHideChecked = document.createElement("input");
+  chkHideChecked.type = "checkbox";
+  chkHideChecked.checked = todoFilterHideChecked;
+  chkHideChecked.addEventListener("change", () => {
+    todoFilterHideChecked = chkHideChecked.checked;
+    persistAll();
+    renderTodo(build || planner.build());
+  });
+  lblHideChecked.append(chkHideChecked, document.createTextNode("Hide checked storage"));
+
+  // Persist toggle
+  const lblPersist = document.createElement("label");
+  lblPersist.className = "small";
+  const chkPersist = document.createElement("input");
+  chkPersist.type = "checkbox";
+  chkPersist.checked = sessionPersistEnabled;
+  chkPersist.addEventListener("change", () => {
+    setSessionPersistEnabled(chkPersist.checked);
+    if (sessionPersistEnabled) {
+      // If they just enabled, persist current in-memory values too
+      persistSessionNow();
+    }
+  });
+  lblPersist.append(chkPersist, document.createTextNode("Persist Owned/Checked & hidden"));
+
+  // Copy Regex (respects current To-do visibility filters; still excludes Checked Storage)
   const btnTodoRegex = document.createElement("button");
   btnTodoRegex.className = "icon";
   btnTodoRegex.textContent = "Copy Regex";
-  btnTodoRegex.title = "Copy a compact Regex list for all items in To‑do steps (excluding Checked Storage)";
+  btnTodoRegex.title = "Copy a compact Regex list for visible To‑do items (excluding Checked Storage)";
   btnTodoRegex.addEventListener("click", () => {
     const again = build || planner.build();
-    const parts = [];
+    const craftable = [];
     for (const [k, n] of again.nodes.entries()) {
       if (!(n.recipeId && n.craftsNeeded > 0)) continue;
-      if (k.startsWith("tag:") || k.startsWith("fluid:")) continue;
-      if (checkedStorage.has(k)) continue;
-      const idNum = store.getMetaId(k);
-      parts.push(buildRegexEntry(n.name, idNum));
+      const r = store.getRecipe(n.recipeId);
+      const craftsNow = craftsPossibleFor(k, n.recipeId);
+      const isChecked = checkedStorage.has(k);
+
+      if (todoFilterHideChecked && isChecked) continue;
+      if (todoFilterCraftableNow && craftsNow < n.craftsNeeded) continue;
+
+      craftable.push({ key: k, name: n.name, idNum: store.getMetaId(k) });
+    }
+
+    const parts = [];
+    for (const it of craftable) {
+      if (it.key.startsWith("tag:") || it.key.startsWith("fluid:")) continue;
+      if (checkedStorage.has(it.key)) continue;
+      parts.push(buildRegexEntry(it.name, it.idNum));
     }
     parts.sort();
     const text = compactJoin(parts);
     if (!text) { toast("Nothing to copy"); return; }
     copyText(text);
   });
-  todoToolbar.appendChild(btnTodoRegex);
+
+  todoToolbar.append(btnTodoOrder, lblCraftable, lblHideChecked, lblPersist, btnTodoRegex);
   todoArea.appendChild(todoToolbar);
 
-  const craftable = new Set(); for (const [k, n] of B.nodes.entries()) if (n.recipeId && n.craftsNeeded > 0) craftable.add(k);
-  if (!craftable.size) { todoArea.appendChild(p("<span class='muted'>No crafting steps pending.</span>")); return; }
+  const craftableKeys = new Set();
+  for (const [k, n] of B.nodes.entries()) if (n.recipeId && n.craftsNeeded > 0) craftableKeys.add(k);
+  if (!craftableKeys.size) { todoArea.appendChild(p("<span class='muted'>No crafting steps pending.</span>")); return; }
 
-  const parentsMap = new Map(); const indeg = new Map(); for (const k of craftable) indeg.set(k, 0);
-  for (const e of edges) if (craftable.has(e.parentKey) && craftable.has(e.childKey)) {
+  // Topological levels
+  const parentsMap = new Map(); const indeg = new Map(); for (const k of craftableKeys) indeg.set(k, 0);
+  for (const e of edges) if (craftableKeys.has(e.parentKey) && craftableKeys.has(e.childKey)) {
     if (!parentsMap.has(e.childKey)) parentsMap.set(e.childKey, []); parentsMap.get(e.childKey).push(e.parentKey);
     indeg.set(e.parentKey, (indeg.get(e.parentKey) || 0) + 1);
   }
   const levels = new Map(); const queue = [];
   for (const [k,d] of indeg.entries()) if (d===0) { queue.push(k); levels.set(k,1); }
-  while (queue.length) { const k = queue.shift(); for (const p of (parentsMap.get(k) || [])) {
+  while (queue.length) {
+    const k = queue.shift();
+    for (const p of (parentsMap.get(k) || [])) {
       const nextL = (levels.get(k) || 1) + 1; levels.set(p, Math.max(levels.get(p) || 1, nextL));
       indeg.set(p, indeg.get(p) - 1); if (indeg.get(p) === 0) queue.push(p);
-  }}
-  let maxL=1; for (const v of levels.values()) maxL=Math.max(maxL,v); for (const k of craftable) if (!levels.has(k)) levels.set(k,maxL+1);
-
-  const steps = [];
-  for (const k of craftable) {
-    const n = B.nodes.get(k); const r = store.getRecipe(n.recipeId);
-    steps.push({ key:k, name:n.name, machine: prettyMachine(r), level: levels.get(k)||1, crafts:n.craftsNeeded, outPerCraft:n.outPerCraft, totalOut:n.craftsNeeded*n.outPerCraft, recipeId:n.recipeId, remaining:n.remaining });
+    }
   }
-  steps.sort((a,b)=> a.level-b.level || a.machine.localeCompare(b.machine) || a.name.localeCompare(b.name));
+  let maxL=1; for (const v of levels.values()) maxL=Math.max(maxL,v); for (const k of craftableKeys) if (!levels.has(k)) levels.set(k,maxL+1);
 
-  let currentLevel = -1;
-  for (const s of steps) {
+  // Build steps list (and compute craftsNow for filtering/highlights)
+  const allSteps = [];
+  for (const k of craftableKeys) {
+    const n = B.nodes.get(k);
+    const r = store.getRecipe(n.recipeId);
+    const craftsNow = craftsPossibleFor(k, n.recipeId);
+    const isChecked = checkedStorage.has(k);
+
+    allSteps.push({
+      key:k,
+      name:n.name,
+      machine: prettyMachine(r),
+      level: levels.get(k)||1,
+      crafts:n.craftsNeeded,
+      outPerCraft:n.outPerCraft,
+      totalOut:n.craftsNeeded*n.outPerCraft,
+      recipeId:n.recipeId,
+      remaining:n.remaining,
+      craftsNow,
+      isChecked
+    });
+  }
+
+  // Apply To-do filters
+  const visibleSteps = allSteps.filter(s => {
+    if (todoFilterHideChecked && s.isChecked) return false;
+    if (todoFilterCraftableNow && s.craftsNow < s.crafts) return false;
+    return true;
+  });
+
+  if (!visibleSteps.length) {
+    todoArea.appendChild(p("<span class='muted'>No To‑do items match your current filters.</span>"));
+    return;
+  }
+
+  // Sort direction (level asc vs desc), machine/name inside each level
+  visibleSteps.sort((a,b)=> {
+    if (a.level !== b.level) return todoReverse ? (b.level - a.level) : (a.level - b.level);
+    const mc = a.machine.localeCompare(b.machine);
+    if (mc) return mc;
+    return a.name.localeCompare(b.name);
+  });
+
+  // Determine current (first) level in current ordering (for "Focus current step")
+  const levelsPresent = Array.from(new Set(visibleSteps.map(s => s.level)));
+  levelsPresent.sort((a,b) => todoReverse ? (b-a) : (a-b));
+  const currentLevelSuggested = levelsPresent[0];
+
+  // Collapse/Expand controls
+  const btnExpandAll = document.createElement("button");
+  btnExpandAll.className = "ghost";
+  btnExpandAll.textContent = "Expand all";
+  btnExpandAll.addEventListener("click", () => {
+    todoCollapsedLevels.clear();
+    persistAll();
+    renderTodo(build || planner.build());
+  });
+
+  const btnCollapseAll = document.createElement("button");
+  btnCollapseAll.className = "ghost";
+  btnCollapseAll.textContent = "Collapse all";
+  btnCollapseAll.addEventListener("click", () => {
+    todoCollapsedLevels = new Set(levelsPresent);
+    persistAll();
+    renderTodo(build || planner.build());
+  });
+
+  const btnFocusCurrent = document.createElement("button");
+  btnFocusCurrent.className = "ghost";
+  btnFocusCurrent.textContent = "Focus current step";
+  btnFocusCurrent.title = "Collapse everything except the next step to work on (based on current order + filters)";
+  btnFocusCurrent.addEventListener("click", () => {
+    todoCollapsedLevels = new Set(levelsPresent.filter(l => l !== currentLevelSuggested));
+    persistAll();
+    renderTodo(build || planner.build());
+    const el = document.getElementById(`todo-level-${currentLevelSuggested}`);
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
+  // Insert these next to the existing toolbar line (keeping UI compact)
+  const controlsRow = document.createElement("div");
+  controlsRow.className = "row";
+  controlsRow.style.margin = "0 0 8px 0";
+  controlsRow.style.flexWrap = "wrap";
+  controlsRow.append(btnFocusCurrent, btnExpandAll, btnCollapseAll);
+  todoArea.appendChild(controlsRow);
+
+  // Render levels
+  let currentLevel = null;
+
+  // Per-level stats (for header counts)
+  const levelStats = new Map();
+  for (const s of visibleSteps) {
+    if (!levelStats.has(s.level)) levelStats.set(s.level, { total:0, craftableNow:0, checked:0 });
+    const st = levelStats.get(s.level);
+    st.total += 1;
+    if (s.craftsNow >= s.crafts) st.craftableNow += 1;
+    if (s.isChecked) st.checked += 1;
+  }
+
+  for (const s of visibleSteps) {
     if (s.level !== currentLevel) {
       currentLevel = s.level;
-      const hdr = document.createElement("div"); hdr.className = "level-title";
+
+      const hdr = document.createElement("div");
+      hdr.className = "level-title";
+      hdr.id = `todo-level-${currentLevel}`;
+
       const levelForThisHeader = currentLevel;
       const titleText = levelForThisHeader===1 ? "Step 1 (base)" : `Step ${levelForThisHeader}`;
-      const leftSpan = document.createElement("span"); leftSpan.textContent = titleText;
+      const isCollapsed = todoCollapsedLevels.has(levelForThisHeader);
+
+      const st = levelStats.get(levelForThisHeader) || { total:0, craftableNow:0, checked:0 };
+      const countsText = `(${st.total} item${st.total===1?"":"s"}${todoFilterCraftableNow ? "" : ` • ${st.craftableNow} craftable now`})`;
+
+      const levelHeader = document.createElement("div");
+      levelHeader.className = "levelHeader";
+
+      const toggleWrap = document.createElement("span");
+      toggleWrap.className = "levelToggle";
+      const btnToggle = document.createElement("button");
+      btnToggle.className = "icon";
+      btnToggle.title = isCollapsed ? "Expand this step" : "Collapse this step";
+      btnToggle.textContent = isCollapsed ? "▸" : "▾";
+      btnToggle.addEventListener("click", () => {
+        if (todoCollapsedLevels.has(levelForThisHeader)) todoCollapsedLevels.delete(levelForThisHeader);
+        else todoCollapsedLevels.add(levelForThisHeader);
+        persistAll();
+        renderTodo(build || planner.build());
+      });
+      toggleWrap.appendChild(btnToggle);
+
+      const titleSpan = document.createElement("span");
+      titleSpan.textContent = `${titleText} `;
+      titleSpan.style.cursor = "pointer";
+      titleSpan.title = "Click to collapse/expand this step";
+      titleSpan.addEventListener("click", () => btnToggle.click());
+
+      const countSpan = document.createElement("span");
+      countSpan.className = "muted";
+      countSpan.textContent = countsText;
+
       const btnStepRegex = document.createElement("button");
       btnStepRegex.className = "icon";
       btnStepRegex.textContent = "Copy Regex";
-      btnStepRegex.title = `Copy a compact Regex list for items in ${titleText} (excluding Checked Storage)`;
-      btnStepRegex.style.marginLeft = "8px";
+      btnStepRegex.title = `Copy a compact Regex list for visible items in ${titleText} (excluding Checked Storage)`;
       btnStepRegex.addEventListener("click", () => {
         const levelParts = [];
-        for (const s2 of steps) {
+        for (const s2 of visibleSteps) {
           if (s2.level !== levelForThisHeader) continue;
           const k = s2.key;
           if (k.startsWith("tag:") || k.startsWith("fluid:")) continue;
@@ -1933,20 +2396,19 @@ function renderTodo(build) {
         if (!text) { toast("Nothing to copy for this step"); return; }
         copyText(text);
       });
-      const wrapRow = document.createElement("div");
-      wrapRow.className = "row";
-      wrapRow.appendChild(leftSpan);
-      wrapRow.appendChild(btnStepRegex);
-      hdr.innerHTML = "";
-      hdr.appendChild(wrapRow);
+
+      levelHeader.append(toggleWrap, titleSpan, countSpan, btnStepRegex);
+      hdr.appendChild(levelHeader);
       todoArea.appendChild(hdr);
     }
 
-    const step = document.createElement("div"); step.className = "step";
-    const craftsNow = craftsPossibleFor(s.key, s.recipeId);
+    // Skip rendering steps if this level is collapsed
+    if (todoCollapsedLevels.has(s.level)) continue;
 
-    if (craftsNow >= s.crafts) step.classList.add("craftable-now");
-    else if (craftsNow >= 1) step.classList.add("partially-craftable");
+    const step = document.createElement("div"); step.className = "step";
+
+    if (s.craftsNow >= s.crafts) step.classList.add("craftable-now");
+    else if (s.craftsNow >= 1) step.classList.add("partially-craftable");
     if (checkedStorage.has(s.key)) step.classList.add("checked-storage");
 
     if (ingredientFocusKey && recipeUsesKey(store.getRecipe(s.recipeId), s.key, ingredientFocusKey)) step.classList.add("ingredient-focus");
@@ -1958,24 +2420,33 @@ function renderTodo(build) {
     left.appendChild(itemPill(`${fmtQty(need)}x ${s.name}`, s.key));
 
     left.appendChild(tagEl(s.machine, machineTagClassForOutKey(s.key)));
-
     if (circuitBadge) left.appendChild(tagEl(circuitBadge));
+
     const copyBtn = document.createElement("button"); copyBtn.className = "icon"; copyBtn.title = `Copy “${s.name}”`; copyBtn.textContent = "Copy";
     copyBtn.addEventListener("click", (ev) => { ev.stopPropagation(); copyText(s.name); });
     left.appendChild(copyBtn);
+
     left.appendChild(span(`<span class="muted">crafts: <span class="mono">${fmtQty(s.crafts)}</span> × <span class="mono">${fmtQty(s.outPerCraft)}</span> → <span class="mono">${fmtQty(s.totalOut)}</span></span>`, ""));
     step.appendChild(left);
 
     const right = document.createElement("div"); right.className = "right";
     const ownedWrap = document.createElement("label"); ownedWrap.className = "small"; ownedWrap.textContent = "Owned:";
     const ownedInput = document.createElement("input"); ownedInput.type = "number"; ownedInput.className = "owned"; ownedInput.min="0"; ownedInput.step="1"; ownedInput.value = obtainedNumber(s.key);
-    ownedInput.addEventListener("change", () => { const val = Math.max(0, Math.floor(Number(ownedInput.value)||0)); obtained.set(s.key, val); renderAll(); });
+    ownedInput.addEventListener("change", () => {
+      const val = Math.max(0, Math.floor(Number(ownedInput.value)||0));
+      setObtainedValue(s.key, val);
+      renderAll();
+    });
     ownedWrap.appendChild(ownedInput);
     right.appendChild(ownedWrap);
 
     const chkWrap = document.createElement("label"); chkWrap.className = "small"; chkWrap.textContent = "Checked Storage";
     const chk = document.createElement("input"); chk.type = "checkbox"; chk.checked = checkedStorage.has(s.key);
-    chk.addEventListener("change", () => { if (chk.checked) checkedStorage.add(s.key); else checkedStorage.delete(s.key); step.classList.toggle("checked-storage", chk.checked); });
+    chk.addEventListener("change", () => {
+      setCheckedStorageFlag(s.key, chk.checked);
+      // Checked storage affects remaining-to-gather and To-do filters; safest is re-render plan
+      renderPlan();
+    });
     chkWrap.prepend(chk);
     right.appendChild(chkWrap);
 
@@ -1984,8 +2455,10 @@ function renderTodo(build) {
 
     const btnOne = document.createElement("button"); btnOne.className = "icon"; btnOne.textContent = "+1 craft"; btnOne.title = `Add ${s.outPerCraft} obtained`;
     btnOne.addEventListener("click", () => { bumpObtained(s.key, s.outPerCraft); });
+
     const btnAll = document.createElement("button"); btnAll.className = "primary"; btnAll.textContent = "Mark done"; btnAll.title = `Add ${need} obtained`;
     btnAll.addEventListener("click", () => { bumpObtained(s.key, need); });
+
     right.append(btnOne, btnAll);
 
     step.appendChild(right);
@@ -1994,9 +2467,8 @@ function renderTodo(build) {
 }
 
 function bumpObtained(key, delta) {
-  const cur = obtainedNumber(key);
-  const next = cur + Math.max(0, Math.floor(delta || 0));
-  obtained.set(key, next); renderAll();
+  bumpObtainedValue(key, delta);
+  renderAll();
 }
 
 // DOM helpers
@@ -2034,14 +2506,45 @@ function itemPill(name, key) {
 function obtainedControl(key) {
   const wrap = document.createElement("div"); wrap.className = "row";
   const minus = document.createElement("button"); minus.className = "icon"; minus.textContent = "−";
-  const input = document.createElement("input"); input.type = "number"; input.min = "0"; input.step = "1"; input.value = obtainedNumber(key);
+  const input = document.createElement("input"); input.type = "number"; input.min = "0";
   const plus = document.createElement("button"); plus.className = "icon"; plus.textContent = "+";
-  minus.addEventListener("click", () => { const cur = obtainedNumber(key); const next = Math.max(0, cur - 1); obtained.set(key, next); renderPlan(); });
-  plus.addEventListener("click", () => { const cur = obtainedNumber(key); const next = cur + 1; obtained.set(key, next); renderPlan(); });
-  input.addEventListener("change", () => { let val = Math.max(0, Math.floor(Number(input.value) || 0)); obtained.set(key, val); renderPlan(); });
-  wrap.append(minus, input, plus); return wrap;
+
+  const step = stepForKey(key);
+  input.step = String(step);
+  input.value = obtainedNumber(key);
+
+  minus.addEventListener("click", () => {
+    const cur = obtainedNumber(key);
+    const next = Math.max(0, cur - step);
+    setObtainedValue(key, next);
+    renderPlan();
+  });
+  plus.addEventListener("click", () => {
+    const cur = obtainedNumber(key);
+    const next = cur + step;
+    setObtainedValue(key, next);
+    renderPlan();
+  });
+  input.addEventListener("change", () => {
+    let val = Math.max(0, Math.floor(Number(input.value) || 0));
+    setObtainedValue(key, val);
+    renderPlan();
+  });
+
+  wrap.append(minus, input, plus);
+  return wrap;
 }
 function obtainedNumber(key) { return Number(obtained.get(key) || 0); }
+
+/**
+ * CHANGE #1 helper: treat manually hidden gather items as "done" for planning math.
+ * (Does NOT change Owned; it only affects planner/craftable calculations.)
+ */
+function planningHave(key, needed = 0) {
+  const have = obtainedNumber(key);
+  if (gatherHiddenKeys.has(key)) return Math.max(have, needed);
+  return have;
+}
 
 // Favorite selector modal
 function pickFavoriteViaDialog(outKey, { mode = "active" } = {}) {
@@ -2099,7 +2602,7 @@ function pickFavoriteViaDialog(outKey, { mode = "active" } = {}) {
   });
 }
 
-/* ---------- Clipboard ---------- */
+/* Clipboard */
 async function copyText(text) {
   try { await navigator.clipboard.writeText(text); toast("Copied to clipboard"); }
   catch {
@@ -2110,8 +2613,7 @@ async function copyText(text) {
   }
 }
 
-/* ---------- RecEx normalizer (with circuits) ---------- */
-
+/* RecEx normalizer (unchanged) */
 const ANY_CIRCUIT_TAGS = new Map([
   ["any ulv circuit","circuitPrimitive"],
   ["any lv circuit","circuitBasic"],
@@ -2134,9 +2636,10 @@ function canonIngredient(ing) { if (ing.tag) return `tag:${ing.tag}#${ing.count|
 function canonOutput(out) { const key = out.key || keyOf(out.item, out.meta || 0); return `item:${key}#${out.count||1}#${out.unit||"item"}`; }
 function stableIdForRecipe(type, machine, inputs, outputs) { const sInputs = inputs.map(canonIngredient).sort().join("|"); const sOutputs = outputs.map(canonOutput).sort().join("|"); const core = `${type}|${machine||""}|${sInputs}=>${sOutputs}`; return `${type}/${stableHashHex(core)}`; }
 
+// (normalizeFromRecEx + importRecExFile + zip helpers unchanged from your version)
+function canonKeyOfMeta(id, m = 0) { return m ? `${id}@${m|0}` : id; }
 function normalizeFromRecEx(raw, opts) {
   const itemsMap = new Map(); const tags = new Map(); const recipes = [];
-  const keyOfMeta = (id, m = 0) => (m ? `${id}@${m|0}` : id);
   const addItem = (key, displayName, metaId) => {
     if (!key) return;
     if (!itemsMap.has(key)) itemsMap.set(key, { displayName, metaId: (typeof metaId === "number" ? metaId : undefined) });
@@ -2173,13 +2676,13 @@ function normalizeFromRecEx(raw, opts) {
 
       for (const im of ims) {
         if (im?.uN) { const key = im.uN; addItem(key, im.lN || im.uN); addTagItem(tag, key); }
-        else if (im?.id) { const key = keyOfMeta(im.id, im.m || 0); addItem(key, im.lN || `${im.id}${im.m ? ` [${im.m}]` : ""}`, typeof im.m === "number" ? im.m : undefined); addTagItem(tag, key); }
+        else if (im?.id) { const key = canonKeyOfMeta(im.id, im.m || 0); addItem(key, im.lN || `${im.id}${im.m ? ` [${im.m}]` : ""}`, typeof im.m === "number" ? im.m : undefined); addTagItem(tag, key); }
       }
 
       if (asOutput && ims.length) {
         const first = ims[0];
         if (first?.uN) { const key = first.uN; addItem(key, first.lN || first.uN); return { item: key, key, count: Math.max(1, count), unit: "item" }; }
-        if (first?.id) { const key = keyOfMeta(first.id, first.m || 0); addItem(key, first.lN || `${first.id}${first.m ? ` [${first.m}]` : ""}`, typeof first.m === "number" ? first.m : undefined); return { item: key, key, count: Math.max(1, count), unit: "item" }; }
+        if (first?.id) { const key = canonKeyOfMeta(first.id, first.m || 0); addItem(key, first.lN || `${first.id}${first.m ? ` [${first.m}]` : ""}`, typeof first.m === "number" ? first.m : undefined); return { item: key, key, count: Math.max(1, count), unit: "item" }; }
       }
       return { tag, count: Math.max(1, count) };
     }
@@ -2192,7 +2695,7 @@ function normalizeFromRecEx(raw, opts) {
       return { item: key, key, count, unit: "item" };
     }
     if (obj.id) {
-      const key = keyOfMeta(obj.id, obj.m || 0); const count = Math.max(1, (obj.a | 0) || 1);
+      const key = canonKeyOfMeta(obj.id, obj.m || 0); const count = Math.max(1, (obj.a | 0) || 1);
       const name = obj.lN || `${obj.id}${obj.m ? ` [${obj.m}]` : ""}`;
       addItem(key, name, typeof obj.m === "number" ? obj.m : undefined);
       return { item: key, key, count, unit: "item" };
@@ -2302,7 +2805,6 @@ function normalizeFromRecEx(raw, opts) {
   return { items, tags: tagsObj, recipes };
 }
 
-// Importers, ZIP helpers, download, toast, focus
 async function importRecExFile(file) {
   if (file.name.endsWith(".zip")) {
     showProgress("Reading ZIP…", 0);
@@ -2359,6 +2861,7 @@ function mergeRecExDocs(a, b) {
   return out;
 }
 
+// ZIP helpers
 async function listJsonEntriesFromZip(u8) {
   const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
   const EOCD = 0x06054b50, CEN = 0x02014b50, LOC = 0x04034b50;
@@ -2478,7 +2981,9 @@ function focusInspectorOnKey(key) {
 setLeftTab(leftTab);
 updateCollapseUI();
 applyColumnSizes();
+persistAll(); // ensures new LS keys exist without breaking older saves
 renderAll();
+updateHiddenItemsButton();
 toast("Load your RecEx ZIP or JSON via the file picker at the top.");
 </script>
 </body>
